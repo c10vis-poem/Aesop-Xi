@@ -79,9 +79,12 @@ OmniRoute @ localhost:20128/mcp     ← single MCP endpoint
   (`knowledge.retrieve`, `knowledge.record`); universal, node-independent
 - **OmniRoute** — the gateway; dynamic-dispatch + local fallback + async
   memory tap; agents never manually pick backends
-- **Reasoning Bank** — multi-model execution ledger, crash recovery
-  (resume from step N+1 if killed at N); JSON KV under `tools/reasoning_bank/`
-- **Continual Harness** — reset-free self-improvement loop with rollback
+- **ReasoningBank** — judges each finished task (success/fail) and distils
+  up to 3 lessons, recalled for similar tasks later. Planned as an OmniRoute
+  plugin; not built. No crash recovery.
+- **Continual Harness** — reset-free self-improvement loop (rewrites its own
+  strategy prompt, skills and memory mid-run). No automatic rollback; backups
+  are restored by hand. Scope for us still open; not built.
 
 **Homes on disk (all under aesop-xi):**
 - `skills/omniroute/` — routing config, decay policies, memory-tap rules
