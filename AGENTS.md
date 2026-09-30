@@ -57,6 +57,9 @@ Two things every agent MUST know:
 
 Any agent reads this file, not just Claude Code. Testing-derived rules:
 
+- **Honey applies universally** — natively in Claude Code, as a text-strip
+  layer in Codex, as a Cordis plugin in DeepSeek Harness (dsh). Apply its
+  rules regardless of engine.
 - **task-observer / GSD-style skill scaffolding is Claude-Code-only.**
   Codex cannot parse markdown skill wrappers or the dual-layer activation
   protocol; dsh's sandboxed plugin layer blocks the observation-log writes
