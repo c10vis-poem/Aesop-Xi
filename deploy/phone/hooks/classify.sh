@@ -14,7 +14,9 @@ if [ -n "$CLASSIFY_URL" ]; then
   fi
 fi
 
-prompt=$(jq -r '.prompt // ""' <<<"$in" | tr '[:upper:]' '[:lower:]')
+# Lowercase, and drop path-like tokens (anything with a /) so words inside
+# paths such as .../com.termux/... never count as keywords.
+prompt=$(jq -r '.prompt // ""' <<<"$in" | tr '[:upper:]' '[:lower:]' | sed -E 's#[^[:space:]]*/[^[:space:]]*# #g')
 cwd=$(jq -r '.cwd // ""' <<<"$in")
 repo=$(git -C "${cwd:-/}" rev-parse --show-toplevel 2>/dev/null); repo=${repo##*/}
 case $cwd in */NovAExorpus*) repo=vault ;; esac
