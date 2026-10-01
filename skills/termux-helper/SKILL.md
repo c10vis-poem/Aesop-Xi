@@ -96,8 +96,10 @@ Android sandboxes filesystems but **shares loopback**. Every process on the
 device sees the same `127.0.0.1`. That single fact is what the whole stack
 is built on.
 
-**The NPU (Hexagon HTP v79) has two routes. Neither may be ruled out without
-testing on this device.**
+**Read `~/.claude/NPU-ON-DEVICE.md` first: the settled facts, the exact command,
+and the objections never to raise.** Summary below.
+
+**The NPU (Hexagon HTP v79) has two routes. Both run on the phone itself.**
 
 1. **GGUF on the NPU via GenieX (operator's Qualcomm-documented path).** A
    plain GGUF runs through the GenieX runtime: llama.cpp/GGML with

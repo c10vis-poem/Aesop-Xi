@@ -22,6 +22,7 @@ Escape hatch: put `#skip-enforce` in a prompt to skip enforcement for that one p
 | naming | kw: rename, renaming, branding, brand, NvAEx, en-vex, Hyperion | read: ~/.claude/projects/-data-data-com-termux-files-home/memory/project_naming_canon.md | session | naming canon |
 | observer | kw: observation, observations, task-observer, skill review | skill: task-observer | session | log + review protocol |
 | hooks | kw: hook, hooks, settings.json, enforcement, enforcements | read: ~/.claude/hooks/README.md | session | what is already installed |
+| npu | kw: npu, htp, hexagon, genie, geniex, qnn, qairt, litert, snapdragon, gguf, ggml | read: ~/.claude/NPU-ON-DEVICE.md | session | settled NPU facts; no computer/ADB pushback |
 
 ## Per-repo follow guides (added the first time we work in a repo)
 
