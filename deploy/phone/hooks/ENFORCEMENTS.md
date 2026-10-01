@@ -24,6 +24,7 @@ Escape hatch: put `#skip-enforce` in a prompt to skip enforcement for that one p
 | hooks | kw: hook, hooks, settings.json, enforcement, enforcements | read: ~/.claude/hooks/README.md | session | what is already installed |
 | npu | kw: npu, htp, hexagon, genie, geniex, qnn, qairt, litert, snapdragon, gguf, ggml | read: ~/.claude/NPU-ON-DEVICE.md | session | settled NPU facts; no computer/ADB pushback |
 | wrapup | kw: wrap up, wrap-up, wrapup, close session, end session, session close | read: ~/.claude/WRAP-UP.md | turn | session wrap-up protocol; unlocks git gate |
+| inventory | kw: new hook, new script, new skill, new tool, write a hook, write a script, write a skill, build a tool, create a hook, create a script, create a skill, add a hook, add a script | read: ~/.claude/INVENTORY.md | session | check existing before building |
 
 ## Per-repo follow guides (added the first time we work in a repo)
 

@@ -42,7 +42,9 @@ section() { awk -v s="## $1" '/^## /{on=($0==s);next} on && /^- /{print substr($
 vault_top=$(git -C "$VAULT" rev-parse --show-toplevel 2>/dev/null)
 echo "=== $(date '+%F %T') session=$sid dry=${dry:-0}"
 
-if [ -n "$since" ] && [ "$VAULT/RESUME.md" -nt "$marker" ]; then resume=rewritten; flag=ok
+# "Rewritten" = RESUME.md's top 40 lines carry today's date (WRAP-UP requires a dated rewrite);
+# mtime alone is unreliable (GitSync conflict handling touches the file).
+if [ -n "$since" ] && [ "$VAULT/RESUME.md" -nt "$marker" ] && head -40 "$VAULT/RESUME.md" 2>/dev/null | grep -q "$(date +%F)"; then resume=rewritten; flag=ok
 else resume="NOT REWRITTEN"; flag="missing ${sid:0:8} $date"; fi
 [ -z "$dry" ] && { mkdir -p "$STATE_DIR"; echo "$flag" > "$STATE_DIR/last-session-resume.flag"; }
 
@@ -95,6 +97,11 @@ ship_repo() { # $1 = repo toplevel
   local url br n0=${#lines[@]} nb0=${#B_br[@]}
   top=$1
   [ "$top" = "$vault_top" ] && { lines+=("- $top: skipped: vault (GitSync)"); return; }
+  # A worktree shares refs with its main repo: ship each real repo once.
+  local common; common=$(git -C "$top" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return
+  [ "${common##*/}" = .git ] && top=${common%/.git}
+  case " ${SEEN_REPOS:-} " in *" $top "*) return;; esac
+  SEEN_REPOS="${SEEN_REPOS:-} $top"
   case $SKIP in *" ${top##*/} "*) lines+=("- $top: skipped: off-limits"); return;; esac
   url=$(git -C "$top" remote get-url origin 2>/dev/null)
   [[ $url =~ $ORIGIN_RE ]] || { lines+=("- $top: skipped: origin not a c10vis-poem fork"); return; }
@@ -112,7 +119,38 @@ ship_repo() { # $1 = repo toplevel
   [ ${#lines[@]} -eq "$n0" ] && [ ${#B_br[@]} -eq "$nb0" ] && lines+=("- $top: skipped: nothing to ship")
 }
 
+
+# Vault: GitSync pushes to the unprotected vault-sync branch; vault-sync -> main goes through a
+# normal PR (CI + secret scan) with a MERGE commit, then vault-sync is brought back to main
+# (fast-forward, or recreated if the merge auto-deleted it).
+VAULT_REPO=${VAULT_REPO:-c10vis-poem/NovAExorpus}; vault_pr=""
+vault_step() {
+  local ahead am
+  ahead=$(gh api "repos/$VAULT_REPO/compare/main...vault-sync" --jq .ahead_by 2>/dev/null) || ahead=0
+  if [ "${ahead:-0}" -gt 0 ]; then
+    if [ -n "$dry" ]; then lines+=("- vault: vault-sync is $ahead commit(s) ahead of main; would open PR + auto-merge (merge commit)"); return; fi
+    vault_pr=$(gh pr list -R "$VAULT_REPO" --head vault-sync --state open --json url -q '.[0].url' 2>/dev/null)
+    [ -n "$vault_pr" ] || vault_pr=$(gh pr create -R "$VAULT_REPO" --base main --head vault-sync --title "vault sync $(date +%F)" \
+      --body "$(printf 'GitSync vault changes from the phone. Merged by the end-of-session ship step.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)')" 2>/dev/null)
+    am=refused; [ -n "$vault_pr" ] && gh pr merge "$vault_pr" -R "$VAULT_REPO" --auto --merge >/dev/null 2>&1 && am=on
+    lines+=("- vault: PR ${vault_pr:-none} (vault-sync -> main, $ahead commits), auto-merge $am")
+  else lines+=("- vault: vault-sync has nothing new for main"); fi
+}
+vault_realign() {
+  local m st
+  m=$(gh api "repos/$VAULT_REPO/commits/main" --jq .sha 2>/dev/null) || return
+  if ! gh api "repos/$VAULT_REPO/git/refs/heads/vault-sync" >/dev/null 2>&1; then
+    gh api -X POST "repos/$VAULT_REPO/git/refs" -f ref=refs/heads/vault-sync -f sha="$m" >/dev/null 2>&1 \
+      && lines+=("- vault: vault-sync recreated at main ${m:0:7}") || lines+=("- vault: vault-sync recreate FAILED")
+    return
+  fi
+  st=$(gh api "repos/$VAULT_REPO/compare/vault-sync...main" --jq .status 2>/dev/null)
+  [ "$st" = ahead ] && { gh api -X PATCH "repos/$VAULT_REPO/git/refs/heads/vault-sync" -f sha="$m" -F force=false >/dev/null 2>&1 \
+      && lines+=("- vault: vault-sync fast-forwarded to main ${m:0:7}") || lines+=("- vault: vault-sync fast-forward FAILED (diverged)"); }
+}
+
 while IFS= read -r top; do ship_repo "$top" </dev/null; done < <(section 'Repos touched')
+vault_step
 
 if [ -n "$dry" ]; then printf '%s\n' "${lines[@]}"; echo "RESUME: $resume"; exit 0; fi
 
@@ -129,6 +167,7 @@ while :; do
         && git -C "${B_top[i]}" push -q origin --delete "${B_br[i]}"
     else left=1; fi
   done
+  if [ -n "$vault_pr" ]; then [ "$(gh pr view "$vault_pr" --json state -q .state 2>/dev/null)" = MERGED ] && vault_pr="" || left=1; fi
   [ $left = 0 ] || [ $SECONDS -ge $end ] && break
   sleep "$POLL_SECS"
 done
@@ -139,6 +178,8 @@ for i in "${!B_br[@]}"; do
   mg=${B_mg[i]}; [ "$mg" = pending ] && mg="pending (awaiting merge)"
   lines+=("- ${B_top[i]}: branch ${B_br[i]}, PR ${B_pr[i]}, auto-merge ${B_am[i]}, merged $mg, branch deleted $del")
 done
+
+vault_realign
 
 printf '%s\n' "${lines[@]}"
 title=$(cat "$PROJECTS_DIR"/*/"$sid".jsonl 2>/dev/null | grep '"ai-title"' | jq -r 'select(.type=="ai-title") | .aiTitle // empty' 2>/dev/null | tail -1)

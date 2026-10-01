@@ -80,7 +80,7 @@ check "recap sections" '[ "$(grep "^## " "$L" | tr "\n" "|")" = "## Repos touche
 # Second session rewrites the vault RESUME.md -> flag ok.
 SID=44444444-aaaa-bbbb-cccc-000000000000
 ledger "$(bash_ev 'ls' "$VAULT")"; touch -d '-1 minute' "$STATE_DIR/session-$SID.start"
-echo resume > "$VAULT/RESUME.md"; ledger "$(write_ev "$VAULT/RESUME.md")"
+printf "# RESUME\n\n## %s\n" "$(date +%F)" > "$VAULT/RESUME.md"; ledger "$(write_ev "$VAULT/RESUME.md")"
 bash "$V2" --worker "$SID" >> "$SHIP_LOG" 2>&1
 check "RESUME rewritten -> recap + flag ok" 'grep -qx "RESUME: rewritten" "$VAULT"/_recaps/*-44444444.md && [ "$(cat "$STATE_DIR/last-session-resume.flag")" = ok ]'
 finish
