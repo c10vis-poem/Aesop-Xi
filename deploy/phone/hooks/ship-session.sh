@@ -77,7 +77,7 @@ ship_repo() { # $1 = repo toplevel; sets $result
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)" 2>/dev/null | tail -1)
   [ -n "$pr" ] || pr=$(gh pr view "$br" --repo "$slug" --json url -q .url 2>/dev/null)
-  local am=refused; [ -n "$pr" ] && gh pr merge "$pr" --auto --squash >/dev/null 2>&1 && am=on
+  local am=refused; [ -n "$pr" ] && gh pr merge "$pr" --auto --squash --delete-branch >/dev/null 2>&1 && am=on
   git switch -q "$orig" 2>/dev/null || git checkout -q "$orig"
   result="branch $br, commit $sha, PR ${pr:-none}, auto-merge $am"
 }
