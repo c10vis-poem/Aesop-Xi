@@ -38,7 +38,7 @@ Before any tool execution or database write occurs, the runtime must obtain a `C
 
 ```json
 {
-  "token_id": "TKN-AESOP-1725710000-A8F2",
+  "token_id": "TKN-EXAMPLE-0001",
   "tool_name": "bash",
   "status": "APPROVED",
   "risk_level": "LOW",
