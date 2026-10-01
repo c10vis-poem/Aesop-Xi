@@ -132,9 +132,12 @@ The planned port layout:
 | GGML | **Termux** | 8081 | `llamad` → llama-server, Gemma 4 12B Q4_0 |
 | Media (STT/TTS) | **App** | 8091 | Moonshine / Kokoro |
 | Control / events | **Termux** | 8765 | `aesopd` WebSocket bridge |
+| Agent memory | **Termux / server** | 8092 | MemVault server (Obsidian MemVault plugin points here) |
 
-**Port discipline:** Termux must never bind 8080 or 8091. The app must never
-bind 8081 or 8765. A collision here is silent and miserable to debug.
+**Port discipline:** Termux must never bind 8080 or 8091; the app must never
+bind 8081, 8765 or 8092. MemVault lives on 8092, never its default 8080 (that
+is the NPU engine). `geniex serve` uses 18181. A collision is silent and
+miserable to debug.
 
 Clients reach any engine over loopback HTTP: the app (8080), `geniex serve`
 (18181) or llama-server (8081). The bridge (8765) routes between them.
