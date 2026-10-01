@@ -183,7 +183,8 @@ Push changes to a branch, open a PR, let the `CI` GitHub Action run, merge
 once it's green (`allow_auto_merge` is on, so this can auto-merge with no
 manual click). Do not `git push origin main` directly for code changes.
 Before every push, scan the diff for secrets/keys and refuse to push if any
-are found. Leave the branch in place after merge; do not delete it.
+are found. Delete the branch after merge (`--delete-branch`; repo auto-delete
+is on) unless the operator says otherwise for a specific case.
 
 The point of this workflow is that everything reaches `main` — a branch
 that never gets a PR opened, or a PR that never gets merged, is a failure
