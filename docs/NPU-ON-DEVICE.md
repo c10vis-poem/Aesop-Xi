@@ -28,7 +28,7 @@ If the session fails with `error 0x80000406`, read `logcat -d | grep -i adsprpc`
 - GenieX bench/runtime: `~/tools/geniex-bench` (bin + lib, including `libggml-hexagon.so`, `libggml-htp-v79.so`, and QNN HTP v79 in `lib/qairt/htp-files`); the v0.3.14 tarball is in the vault at `qairt_/`.
 - `libcdsprpc.so`: `/vendor/lib64` (readable from Termux).
 - Models, Q4_0 preferred for the HTP: `Documents/Models/` (Qwen 3.5 9B, Qwen 3.5 2B, Gemma 4 12B QAT, E4B, E2B, Granite micro) and `~/downloads`. The AI Hub bundle `qwen3_vl_4b_instruct-geniex_qairt-w4a16-…8_elite (2).zip` is also in `Documents/Models/`.
-- Docs: the fork `~/repos/GenieX` (`docs/en/`, `notes/`, kept synced), `~/llama.cpp` (`docs/backend/snapdragon/`; read `origin/master`), and the operator's notes in `~/repos/aesop-xi/HTP/` and `~/repos/NovAExorpus/HTP/`. Full Qualcomm docs are in the vault `QAIRT-QNN/` and `02_wiki_md/vendors/qualcomm/`.
+- Docs: the fork `~/repos/GenieX` (`docs/en/`, `notes/`, kept synced), `~/llama.cpp` (`docs/backend/snapdragon/`; read `origin/master`), and the operator's notes in `~/repos/aesop-xi/HTP/` and `~/storage/shared/Documents/NovAExorpus/HTP/`. Full Qualcomm docs are in the vault `QAIRT-QNN/` and `02_wiki_md/vendors/qualcomm/`.
 - Google LiteRT / LiteRT-LM (Qualcomm NPU accelerator) docs: vault `Vendor-Registries/GOOGLE _DEV/` (Jul 30). LiteRT is current, not removed.
 
 ## Objections that are WRONG — never raise them

@@ -114,7 +114,7 @@ and the objections never to raise.** Summary below.
      models need three domains or CPU offload.
    - GenieX modes are `--device hybrid` (the default), `npu`, `gpu` and `cpu`.
    - Docs: `~/repos/aesop-xi/HTP/HTP-Memory-Architecture-and-runtime-splitting (1).txt`
-     and `~/repos/NovAExorpus/HTP/`. They come from the Qualcomm docs on the
+     and `~/storage/shared/Documents/NovAExorpus/HTP/`. They come from the Qualcomm docs on the
      device: vault `QAIRT-QNN/` and `02_wiki_md/vendors/qualcomm/`.
 2. **Precompiled QAIRT/GENIE contexts** (QAI Hub or LiteRT `.bin`), served by
    GenieX or by the app's `ort_engine`. An example on the device:

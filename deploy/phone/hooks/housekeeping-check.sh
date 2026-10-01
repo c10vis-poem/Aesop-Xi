@@ -3,6 +3,8 @@
 # Due if PENDING.md "last-housekeeping:" is missing/never, 7+ days old,
 # or it's Fri-Sun and the last run was before this Friday. Never blocks.
 P=${PENDING_FILE:-$HOME/storage/shared/Documents/NovAExorpus/PENDING.md}
+F="$HOME/.claude/state/last-session-resume.flag"
+[ -f "$F" ] && grep -q '^missing' "$F" && echo "WARNING: last session ended without rewriting RESUME.md ($(cut -d' ' -f2- "$F")). Fix that first."
 [ -f "$P" ] || exit 0
 last=$(sed -n 's/^last-housekeeping: *\([0-9-]*\).*/\1/p' "$P" | head -1)
 today=$(date +%s); dow=$(date +%u)   # 1=Mon .. 7=Sun

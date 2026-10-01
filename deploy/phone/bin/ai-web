@@ -1,0 +1,24 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# Chat with a local model in your phone's browser (http://127.0.0.1:8081).
+#   ai-web                    start with the default model and open the browser
+#   ai-web <model.gguf>       start with another model (see: models)
+#   ai-stop                   stop it and free the memory
+# NOTE: this browser chat runs on the CPU (llama-server). NPU-in-the-browser
+# needs the GenieX HTTP wrapper, which is not built yet (see the guide).
+M="${1:-$HOME/downloads/Qwen3.5-2B-Q4_0.gguf}"
+PORT="${AI_PORT:-8081}"
+LOG="$HOME/.cache/ai-web.log"; mkdir -p "${LOG%/*}"
+[ -f "$M" ] || { echo "model not found: $M  (run: models)"; exit 1; }
+if curl -s -m 2 "127.0.0.1:$PORT/health" | grep -q ok; then
+  echo "already running on :$PORT (ai-stop first to switch models)"
+else
+  nohup "$HOME/bin/llama-server" -m "$M" --host 127.0.0.1 --port "$PORT" -c 4096 -t 6 >"$LOG" 2>&1 &
+  echo $! > "$HOME/.cache/ai-web.pid"
+  printf 'loading %s ' "${M##*/}"
+  for i in $(seq 1 60); do
+    curl -s -m 2 "127.0.0.1:$PORT/health" | grep -q ok && break
+    kill -0 "$(cat "$HOME/.cache/ai-web.pid")" 2>/dev/null || { echo; echo "failed - see $LOG"; tail -5 "$LOG"; exit 1; }
+    printf '.'; sleep 2
+  done; echo
+fi
+termux-open-url "http://127.0.0.1:$PORT" && echo "opened http://127.0.0.1:$PORT in your browser"

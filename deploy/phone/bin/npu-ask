@@ -1,0 +1,40 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# Ask a local model on the NPU (GenieX, on-device, no internet).
+#   npu-ask "your question"            answer printed
+#   npu-ask -s "your question"         answer printed AND spoken aloud
+#   npu-ask -m <model.gguf> "question" use a different GGUF (see: models)
+#   NPU_DEVICE=npu npu-ask "..."       pure NPU (default: hybrid = NPU+CPU, fastest)
+#   NPU_TOKENS=400 npu-ask "..."       longer answers (default 300)
+set -e
+B="${GENIEX_HOME:-$HOME/tools/geniex-bench}"
+M="${NPU_MODEL:-$HOME/downloads/Qwen3.5-2B-Q4_0.gguf}"
+say=""
+while [ $# -gt 0 ]; do
+  case $1 in
+    -s|--speak) say=1; shift ;;
+    -m|--model) M=$2; shift 2 ;;
+    -h|--help) sed -n '2,8p' "$0"; exit 0 ;;
+    *) break ;;
+  esac
+done
+q="$*"; [ -n "$q" ] || q=$(cat)
+[ -f "$M" ] || { echo "model not found: $M  (run: models)" >&2; exit 1; }
+[ -e "$B/lib/libggml-htp-v79.so" ] || ln -sf llama_cpp/libggml-htp-v79.so "$B/lib/libggml-htp-v79.so"
+p=$(mktemp); trap 'rm -f "$p"' EXIT
+# Chat format picked from the model file name (override: NPU_FORMAT=qwen|gemma|raw).
+fmt=${NPU_FORMAT:-$(case "${M##*/}" in *[Gg]emma*) echo gemma;; *[Qq]wen*) echo qwen;; *) echo raw;; esac)}
+case $fmt in
+  qwen)  printf '<|im_start|>user\n%s<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n' "$q" > "$p" ;;
+  gemma) printf '<start_of_turn>user\n%s<end_of_turn>\n<start_of_turn>model\n' "$q" > "$p" ;;
+  *)     printf '%s' "$q" > "$p" ;;
+esac
+cd "$B"
+out=$(LD_LIBRARY_PATH=lib:lib/llama_cpp:/vendor/lib64 GENIEX_PLUGIN_PATH=lib \
+  bin/geniex-bench --plugin llama_cpp --device "${NPU_DEVICE:-hybrid}" -m "$M" \
+  --prompt-file "$p" -n "${NPU_TOKENS:-300}" --accuracy 2>/dev/null)
+ans=$(printf '%s\n' "$out" | sed -n 's/^\[gen \] \{0,1\}//p' | sed "s/<|im_end|>.*//; s/<end_of_turn>.*//")
+stat=$(printf '%s\n' "$out" | grep -a -o 'decode=[0-9.]*tps' | head -1)
+printf '%s\n' "$ans"
+printf '\n[%s, %s]\n' "${M##*/}" "${stat:-?}" >&2
+[ -n "$say" ] && command -v speak >/dev/null && printf '%s\n' "$ans" | speak
+exit 0
