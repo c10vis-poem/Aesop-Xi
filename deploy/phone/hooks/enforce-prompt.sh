@@ -6,6 +6,10 @@ prompt=$(jq -r '.prompt // ""' <<<"$in"); cwd=$(jq -r '.cwd // ""' <<<"$in")
 st="$HOME/.claude/state"; mkdir -p "$st"
 req="$st/required-$sid.tsv"; done_="$st/satisfied-$sid.tsv"; loaded="$st/loaded-$sid.txt"; log="$st/enforce-$sid.log"
 touch "$done_" "$loaded"; : > "$req"
+rm -f "$st/pushnow-$sid"
+lp=$(tr '[:upper:]' '[:lower:]' <<<"$prompt")
+grep -qE 'wrap[ -]?up|close (the )?session|end (the )?session|session close' <<<"$lp" && touch "$st/wrapup-$sid"
+grep -q 'push now' <<<"$lp" && touch "$st/pushnow-$sid"
 H=$(dirname "$(realpath "$0")")
 
 # A /skill typed by the operator counts as loading that skill.
