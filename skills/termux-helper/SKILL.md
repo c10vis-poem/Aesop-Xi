@@ -1,6 +1,6 @@
 ---
 name: termux-helper
-description: "Termux on-device AI stack for Snapdragon 8 Elite. Use when working with Termux on Android: the llamad GGML plane (llama-server, Gemma 4 12B Q4_0, port 8081), the aesopd WebSocket bridge to the Horizons app (port 8765), termux-services daemon supervision, wake-lock persistence, and voice pipeline wiring. Also standard Termux operations: package management, $PREFIX paths, storage access, background services. Read Part 2 before proposing any NPU/Hexagon work — Termux cannot reach the DSP and this skill explains what to do instead."
+description: "Termux on-device AI stack for Snapdragon 8 Elite. Use when working with Termux on Android: the llamad GGML plane (llama-server, Gemma 4 12B Q4_0, port 8081), the aesopd WebSocket bridge to the Horizons app (port 8765), termux-services daemon supervision, wake-lock persistence, and voice pipeline wiring. Also standard Termux operations: package management, $PREFIX paths, storage access, background services. Read Part 2 before any NPU/Hexagon work: it covers the GenieX GGUF→libggml-htp→HTP path, the HTP0/HTP1 weight split, and how to test NPU reach before claiming it."
 ---
 
 # Termux Helper — On-Device AI Stack, Snapdragon 8 Elite
@@ -21,6 +21,37 @@ description: "Termux on-device AI stack for Snapdragon 8 Elite. Use when working
 - Shebang: `#!/data/data/com.termux/files/usr/bin/bash`
 - Convert foreign scripts: `termux-fix-shebang <script>`
 - Never hardcode `/bin/bash`, `/usr/bin`, `/etc` — expand `$PREFIX`.
+
+### 1.2a Commands for the operator to run — NEVER paste one-liners
+
+The operator's shell is **zsh**. Pasted one-liners fail every time (history
+confirmed across many sessions):
+
+- `!` anywhere — including `#!` shebangs inside `printf`/`echo` — triggers zsh
+  history expansion: `event not found`.
+- Long lines wrap on the phone keyboard/paste and split into broken commands,
+  leaving the terminal stuck at `quote>` / `dquote>` (fix: Ctrl+C).
+
+Rule: anything longer than one short command goes in a **script file** (Write
+it to `~/storage/shared/Documents/NovAExorpus/Scripts/`), and the operator runs
+`sh <path>`. Never hand over a command containing `!`, heredocs, or nested quotes.
+
+### 1.2b Node native builds (npm/pnpm) on Termux
+
+- `/usr/bin/env` doesn't exist: global CLIs with `#!/usr/bin/env node` (e.g.
+  `pnpm`) fail with "bad interpreter". Run via `node <path>/pnpm.mjs`, or a
+  `$PREFIX/bin/sh` shim on PATH; after `npm link`, `termux-fix-shebang` the bin.
+- `node-gyp` isn't on PATH: shim to npm's bundled
+  `$PREFIX/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js` and set
+  `GYP_DEFINES="android_ndk_path=''"`.
+- Prebuilt native addons almost never ship `android-arm64`; expect a source
+  build or a missing binding. Read the package before guessing.
+- Termux clang defaults to API 24, so newer libc functions (`statx()`, etc.)
+  are undeclared → "invalid operands" / implicit-declaration errors. Build with
+  `CFLAGS="-target aarch64-linux-android30" CXXFLAGS="-target aarch64-linux-android30"`
+  (device is API 36). Operator-supplied fix; verified on koffi 3.1.1.
+  `pnpm rebuild <pkg>` may silently skip — run the package's own `install`
+  script from its directory instead.
 
 ### 1.3 Storage
 
@@ -65,21 +96,37 @@ Android sandboxes filesystems but **shares loopback**. Every process on the
 device sees the same `127.0.0.1`. That single fact is what the whole stack
 is built on.
 
-**Termux CANNOT reach the Hexagon DSP.** The FastRPC vendor libraries live
-outside the Termux sandbox, and SELinux keeps them there. No llama.cpp build
-flag fixes this — not `GGML_HEXAGON=ON`, not a QNN-enabled binary, not
-`LD_LIBRARY_PATH` gymnastics. If a plan requires Termux to load QNN, GENIE,
-or QAIRT, the plan is wrong. Say so instead of trying it.
+**The NPU (Hexagon HTP v79) has two routes. Neither may be ruled out without
+testing on this device.**
 
-**The app CAN.** Horizons (Kotlin/WebView) runs `ort_engine` in app context,
-which has vendor lib access, and serves GENIE-compiled contexts (Gemma 4
-E4B, Qwen 2B QAI) over HTTP on port 8080.
+1. **GGUF on the NPU via GenieX (operator's Qualcomm-documented path).** A
+   plain GGUF runs through the GenieX runtime: llama.cpp/GGML with
+   `libggml-htp` → FastRPC (`libcdsprpc.so`, readable from Termux at
+   `/vendor/lib64`) → HTP. It lands fully on the NPU, at the same GenieX
+   endpoint as a precompiled QAIRT model. No QAI Hub compile is needed.
+   - The libs are in `~/tools/geniex-bench/lib`: `libggml-hexagon.so`,
+     `libggml-htp-v79.so`, and `qairt/htp-files/libQnnHtpV79*.so`.
+   - **Weight split:** each FastRPC domain addresses about 3.5 GB. A model of
+     3.2 GB or less runs on `HTP0`. Up to 6.5 GB splits across `HTP0,HTP1`
+     (e.g. layers 0–24 / 25–48: `D=HTP0,HTP1 … --n-gpu-layers 49`). Bigger
+     models need three domains or CPU offload.
+   - GenieX modes are `--device hybrid` (the default), `npu`, `gpu` and `cpu`.
+   - Docs: `~/repos/aesop-xi/HTP/HTP-Memory-Architecture-and-runtime-splitting (1).txt`
+     and `~/repos/NovAExorpus/HTP/`. They come from the Qualcomm docs on the
+     device: vault `QAIRT-QNN/` and `02_wiki_md/vendors/qualcomm/`.
+2. **Precompiled QAIRT/GENIE contexts** (QAI Hub or LiteRT `.bin`), served by
+   GenieX or by the app's `ort_engine`. An example on the device:
+   `Documents/Models/qwen3_vl_4b_instruct-geniex_qairt-w4a16-qualcomm_snapdragon_8_elite (2).zip`.
 
-So the division of labor is:
+Before claiming the NPU is or isn't reachable from Termux, run GenieX with
+`--device npu` on a small GGUF and check the output for HTP execution versus
+CPU fallback. Read the operator's Qualcomm docs before reasoning from memory.
+
+The planned port layout:
 
 | Plane | Owner | Port | Runs |
 |-------|-------|------|------|
-| NPU / HTP v79 | **App** (Horizons) | 8080 | `ort_engine`, GENIE ctx binaries |
+| NPU / HTP v79 | **App** (Hyperion-OXiLm) or GenieX | 8080 (app) / 18181 (`geniex serve`) | `ort_engine`, GENIE ctx binaries, GGUF via libggml-htp |
 | GGML | **Termux** | 8081 | `llamad` → llama-server, Gemma 4 12B Q4_0 |
 | Media (STT/TTS) | **App** | 8091 | Moonshine / Kokoro |
 | Control / events | **Termux** | 8765 | `aesopd` WebSocket bridge |
@@ -87,17 +134,20 @@ So the division of labor is:
 **Port discipline:** Termux must never bind 8080 or 8091. The app must never
 bind 8081 or 8765. A collision here is silent and miserable to debug.
 
-Termux reaches the NPU by *asking the app over HTTP*, never by loading it.
-That's what the bridge is for.
+Clients reach any engine over loopback HTTP: the app (8080), `geniex serve`
+(18181) or llama-server (8081). The bridge (8765) routes between them.
 
 ## Part 3: The GGML Plane (`llamad`)
 
 llama-server on 8081, supervised by runit. Backend ladder inside Termux is
 Adreno 830 via OpenCL if the build carries it, CPU big cores otherwise.
 
-**Model: Gemma 4 12B IT QAT, Q4_0 quant specifically.** llama.cpp
-runtime-repacks Q4_0 into the i8mm/dotprod aarch64 layout on this SoC;
-K-quants (Q4_K_XL etc.) don't get that. If both files are on disk, Q4_0 wins.
+**On the CPU/GPU plane, prefer Q4_0 quants.** llama.cpp runtime-repacks Q4_0
+into the i8mm/dotprod aarch64 layout on this SoC; K-quants (Q4_K_XL etc.)
+don't get that, so when both are on disk, pick Q4_0. Which model is
+"strongest" (e.g. Gemma 4 12B QAT vs Qwen 3.5 9B) is an open question for the
+operator. Don't rank models without a benchmark. Whatever runs on the NPU
+(above) beats this plane on speed.
 
 **Models are already on device.** Discover, never download. Never quantize —
 these are pre-quantized and plug-and-play. If asked about quantization,
@@ -158,7 +208,7 @@ sv status llamad aesopd
 | Killed mid-generation | LMK under pressure | Confirm mmap is on; close background apps |
 | Very slow first token | Pages evicted, re-reading from UFS | Free RAM; this is degraded-not-dead by design |
 | Bridge won't connect | `aesopd` down | `sv status aesopd`; direct HTTP to 8081 still works |
-| Any "enable HTP in Termux" idea | Category error | See Part 2 — route to the app instead |
+| NPU run falls back to CPU | Model too big for one domain, or HTP libs not on the path | Check the size rule (Part 2), use `HTP0,HTP1`, set `LD_LIBRARY_PATH` to the geniex lib dirs |
 
 ## Part 7: Where This Lives
 
