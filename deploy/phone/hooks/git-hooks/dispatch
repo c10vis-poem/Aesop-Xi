@@ -1,0 +1,21 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# Global git hook (core.hooksPath). Runs gitleaks on pre-commit / pre-push, then
+# chains to the repo's own .git/hooks/<name> so per-repo hooks keep working.
+# Exceptions: only a repo's own .gitleaksignore. No global off switch.
+name=$(basename "$0")
+case $name in
+  pre-commit)
+    gitleaks git --pre-commit --staged --redact --no-banner -v || {
+      echo "BLOCKED: gitleaks found a secret in staged changes. Remove it, or add a reviewed entry to this repo's .gitleaksignore." >&2; exit 1; } ;;
+  pre-push)
+    z=0000000000000000000000000000000000000000
+    while read -r lref lsha rref rsha; do
+      [ "$lsha" = "$z" ] && continue
+      range=$([ "$rsha" = "$z" ] && echo "$lsha --not --remotes" || echo "$rsha..$lsha")
+      gitleaks git --log-opts="$range" --redact --no-banner -v || {
+        echo "BLOCKED: gitleaks found a secret in commits being pushed ($lref)." >&2; exit 1; }
+    done ;;
+esac
+own="$(git rev-parse --git-dir)/hooks/$name"
+[ -x "$own" ] && exec "$own" "$@"
+exit 0
