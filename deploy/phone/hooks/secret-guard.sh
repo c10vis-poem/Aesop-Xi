@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # PreToolUse (Bash, Read): refuse printing secret files and skipping git hooks.
 in=$(cat); tool=$(jq -r .tool_name <<<"$in")
-SECRET='(\.env([^a-z]|$)|\.credentials|\.claude\.json|secrets\.env|gh/hosts\.yml|\.git-credentials|\.pem|\.key([^a-z]|$)|vm-desktop-pass|control\.key|\.service([^a-z]|$))'
+SECRET='((^|[/[:space:]"~])\.env(\.[a-z]+)?([[:space:]"]|$)|\.credentials|\.claude\.json|secrets\.env|gh/hosts\.yml|\.git-credentials|[A-Za-z0-9_-]\.pem([[:space:]"]|$)|[A-Za-z0-9_-]\.key([[:space:]"]|$)|vm-desktop-pass|[A-Za-z0-9_-]\.service([[:space:]"]|$))'
 if [ "$tool" = Read ]; then
   f=$(jq -r '.tool_input.file_path // ""' <<<"$in")
   grep -qiE "$SECRET" <<<"$f" && { echo "BLOCKED (secret-guard): $f may hold secrets. Print key names only, values redacted (e.g. sed -E 's/=.*/=<redacted>/')." >&2; exit 2; }
