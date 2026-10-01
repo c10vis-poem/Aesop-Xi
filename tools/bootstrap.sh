@@ -62,7 +62,40 @@ fi
 psql -h localhost -d postgres -tAc "SELECT default_version FROM pg_available_extensions WHERE name='vector';" 2>/dev/null | grep -q '^[0-9]' \
   || warn "pgvector extension not available on this Postgres — build from source with SHLIB_LINK='-lm'"
 
-# 3c. OmniRoute gateway on 20128
+# 3c. terrestrial-brain MCP on 8000
+if ! nc -z localhost 8000 2>/dev/null; then
+  TB_MCP_DIR="$HOME/repos/NovA-terrestrial-brain/supabase/functions/terrestrial-brain-mcp"
+  if [ ! -d "$TB_MCP_DIR" ]; then
+    TB_MCP_DIR="/opt/novaxorpus/NovA-terrestrial-brain/supabase/functions/terrestrial-brain-mcp"
+  fi
+  if [ -d "$TB_MCP_DIR" ] && [ -f "$TB_MCP_DIR/index.ts" ]; then
+    log "starting terrestrial-brain MCP"
+    TB_ENV="$HOME/repos/NovA-terrestrial-brain/local-mcp/.env.local"
+    [ -f "$TB_ENV" ] || TB_ENV="/opt/novaxorpus/NovA-terrestrial-brain/local-mcp/.env.local"
+    if [ -f "$TB_ENV" ]; then
+      _MCP_KEY=$(grep MCP_ACCESS_KEY "$TB_ENV" | cut -d= -f2)
+      cd "$TB_MCP_DIR"
+      LOCAL_PG_URL="postgres://brain_app:brain_local_dev@127.0.0.1:5432/terrestrial_brain" \
+        MCP_ACCESS_KEY="$_MCP_KEY" \
+        OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-}" \
+        nohup deno run --allow-net --allow-env --allow-read --allow-write index.ts > /tmp/terrestrial-brain.log 2>&1 &
+      echo $! > /tmp/terrestrial-brain.pid
+      sleep 2
+      if nc -z localhost 8000 2>/dev/null; then
+        log "terrestrial-brain MCP running (pid $(cat /tmp/terrestrial-brain.pid))"
+      else
+        warn "terrestrial-brain started but port 8000 not responding — check /tmp/terrestrial-brain.log"
+      fi
+      cd "$REPO_ROOT"
+    else
+      warn "terrestrial-brain .env.local not found — skipping"
+    fi
+  else
+    warn "terrestrial-brain repo not found — skipping"
+  fi
+fi
+
+# 3d. OmniRoute gateway on 20128
 if ! nc -z localhost 20128 2>/dev/null; then
   if [ -x "$AESOP_XI_ROOT/tools/omniroute/start.sh" ]; then
     log "starting OmniRoute"
@@ -72,7 +105,7 @@ if ! nc -z localhost 20128 2>/dev/null; then
   fi
 fi
 
-# 3d. mem0 backend — hosted MCP; verify key is present
+# 3e. mem0 backend — hosted MCP; verify key is present
 if [ -z "${MEM0_API_KEY:-}" ]; then
   warn "MEM0_API_KEY not set — mem0 layer will be inert. Fix: paste key into ~/.mem0/.env"
 fi
