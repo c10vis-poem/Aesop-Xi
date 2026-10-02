@@ -66,7 +66,8 @@ npu-serve status | stop
 ```
 - Serves the model **from GenieX itself**: the Android GenieX package ships the full SDK (`libgeniex.so`), not just the benchmark tool. `~/tools/geniex-serve` is a small C shim plus a Python server over it, loading the model once and keeping it on the HTP.
 - Runs **GenieX v0.7.1**, the current release (`GENIEX=v0.3.14 npu-serve` for the old one), in burst power mode.
-- Measured on v0.7.1: `Hexagon Arch version v79`, `HTP0 new session`, all layers on HTP0; prefill 161–194 tok/s, decode ~17 tok/s.
+- Measured on v0.7.1: `Hexagon Arch version v79`, `HTP0 new session`, decode 12–17 tok/s.
+- **Proof test (2026-10-02): not 100% NPU, and slower than the CPU on Qwen 3.5 2B.** Same request: NPU mode decode 12.7 tok/s, CPU mode 34.1 tok/s. About 400 MB of the model stays on the CPU, so every token goes back and forth. Under investigation; see the build log.
 - OpenAI API (`/v1/chat/completions`, streaming or not, `/v1/models`, `/health`), so OmniRoute, scripts and wiki tools can call it. Log: `~/.cache/geniex-serve.log`.
 - The log is in `~/.cache/ai-web.log`.
 

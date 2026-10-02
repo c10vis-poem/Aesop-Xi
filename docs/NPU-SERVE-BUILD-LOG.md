@@ -13,9 +13,9 @@
 |---|---|
 | Runtime | **GenieX v0.7.1** (current release, 2026-09-28), `~/tools/geniex-bench-android-arm64-v0.7.1`. Tarball sha256 `857879f8…83bf01` matches Qualcomm's release. |
 | Model | Qwen 3.5 2B Q4_0, AI Hub's curated GGUF (`~/downloads/Qwen3.5-2B-Q4_0.gguf`) |
-| Device | `npu`: 100% on `HTP0`, all layers, power mode **burst** |
+| Device | `npu`: all layers assigned to `HTP0`, power mode **burst**. **Not 100% NPU:** 398 MiB of weights (`token_embd` + 18 others) stay on the CPU |
 | Server | `npu-serve` → `http://127.0.0.1:18181/v1` (OpenAI API: `/v1/chat/completions` streaming or not, `/v1/models`, `/health`) |
-| Measured | prefill 161–194 tok/s, decode 16.8–17.0 tok/s (server); bench: prefill 644, decode 15.9 tok/s |
+| Measured | **Proof test, same 220-token request:** NPU mode decode 12.7 tok/s, prefill 140–145; **CPU mode decode 34.1, prefill 188.** On this model the NPU path is slower than the CPU. |
 | Proof it's on the NPU | log has `Hexagon Arch version v79`, `HTP0 new session … domain-id 3`, layers assigned to HTP0 |
 
 ## 2. What the 2026-10-01 session got right
@@ -76,6 +76,7 @@ curl -s 127.0.0.1:18181/v1/chat/completions -H 'Content-Type: application/json' 
 **Rule:** never run a shim built against one GenieX version with another version's `libgeniex.so`. The struct layouts differ, and a mismatch corrupts the data passed in or crashes.
 
 ## 7. Open items
+0. **NPU slower than CPU on Qwen 3.5 2B.** Find which tensors and ops stay on the CPU (run with `GGML_SCHED_DEBUG=2`), and test a non-hybrid model such as Llama 3.2 1B Q4_0 as a control. `0x80000414` = llama.cpp #22352: the HMX max-clock vote from PR #22334 is refused.
 1. **Speed gap:** ~17 tok/s decode vs ~45–50 expected. Next: measure with other apps closed, then as the ADB shell user (RESUME's wireless-debugging test).
 2. Point `npu-ask` at `npu-serve` (it still loads the v0.3.14 bench tool for each call).
 3. Have OmniRoute and the wiki tools use `http://127.0.0.1:18181/v1`.
