@@ -19,7 +19,7 @@ ap.add_argument("--port", type=int, default=18181)
 ap.add_argument("--ctx", type=int, default=4096)
 args = ap.parse_args()
 
-shim = ctypes.CDLL(os.path.join(HERE, "libgeniex_shim.so"))
+shim = ctypes.CDLL(os.environ.get("GENIEX_SHIM") or os.path.join(HERE, "libgeniex_shim.so"))
 shim.shim_load.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]
 shim.shim_chat.argtypes = [ctypes.c_int, ctypes.POINTER(ctypes.c_char_p), ctypes.POINTER(ctypes.c_char_p),
                            ctypes.c_int, ctypes.c_float, ctypes.c_float, ctypes.c_int, CB, ctypes.c_void_p,

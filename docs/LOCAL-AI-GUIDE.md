@@ -37,7 +37,7 @@ npu-ask "Explain what an NPU is in two sentences."
 **Options**
 - `-s`: also speak the answer.
 - `NPU_TOKENS=600 npu-ask "..."`: longer answers (default 300 tokens).
-- `NPU_DEVICE=npu npu-ask "..."`: pure NPU. The default is `hybrid` (NPU + CPU per operation), Qualcomm's "fast path".
+- The default is **`npu`**: 100% on the NPU (`HTP0`, all layers), GenieX's own default. `NPU_DEVICE=hybrid npu-ask "..."` splits work between the NPU and the CPU.
 - Pipe text in: `cat notes.md | npu-ask -m <model>`.
 
 **How each call works:** it loads the model, answers once, then exits, so each question has a few seconds of load time. It's a one-shot asker, not a chat with memory. For back-and-forth chat, use `ai-web` (§3).
@@ -63,7 +63,8 @@ npu-serve <path.gguf> hybrid    # other model / mode
 npu-serve status | stop
 ```
 - Serves the model **from GenieX itself**: the Android GenieX package ships the full SDK (`libgeniex.so`), not just the benchmark tool. `~/tools/geniex-serve` is a small C shim plus a Python server over it, loading the model once and keeping it on the HTP.
-- Measured: `Hexagon Arch version v79`, `HTP0 new session`, `offloaded 25/25 layers`; prefill 47.9 tok/s, decode 19.2 tok/s.
+- Runs **GenieX v0.7.1**, the current release (`GENIEX=v0.3.14 npu-serve` for the old one), in burst power mode.
+- Measured on v0.7.1: `Hexagon Arch version v79`, `HTP0 new session`, all layers on HTP0; prefill 161–194 tok/s, decode ~17 tok/s.
 - OpenAI API (`/v1/chat/completions`, streaming or not, `/v1/models`, `/health`), so OmniRoute, scripts and wiki tools can call it. Log: `~/.cache/geniex-serve.log`.
 - The log is in `~/.cache/ai-web.log`.
 
@@ -156,9 +157,9 @@ Each step installs or changes things, so run them in a session with Claude, one 
 
 ## 8. Open items (as of 2026-10-01)
 
-- **Newer GenieX v0.7.1** (installed at `~/tools/geniex-bench-android-arm64-v0.7.1`) puts the whole model on the NPU and reads prompts faster, but generation drops to ~3 tok/s from Termux. Its "DSP queue" call fails (`0x80000414`). Leading theory: Termux isn't allowed to read `/vendor/dsp/`. The test is to run it through wireless debugging (ADB to the phone itself).
+- **GenieX v0.7.1** runs at normal speed through `npu-serve` (decode ~17 tok/s), so the earlier ~3 tok/s was not the build. `npu-ask` still uses the v0.3.14 bench tool.
 - ~~GenieX HTTP wrapper~~ **done 2026-10-02:** `npu-serve` (§3).
-- **Newer GenieX builds:** v0.3.16–v0.3.19 (Jul 20–Aug 7) came out after the installed v0.3.14 and update llama.cpp. Test their speed against v0.3.14.
+- **Speed gap:** ~17–19 tok/s vs Qualcomm's ~45–50 for a 2B Q4_0. Next: compare decode with other apps closed, and test the ADB-shell user.
 - **Qualcomm chat app build** (§4).
 - **The voice items** in §6.
 - **Qwen 3.5 9B on the NPU:** not tested yet.

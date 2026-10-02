@@ -1,9 +1,14 @@
-// Thin C shim over libgeniex.so (v0.3.14 ABI, header pinned from 2026-06-25)
-// so Python can drive it through ctypes with plain types only.
+// Thin C shim over libgeniex.so. Default: v0.3.14 ABI (geniex.h, 2026-06-25).
+// -DGX071: v0.7.1 ABI (geniex-v0.7.1.h, tag v0.7.1).
+// Exposes plain types so Python can drive it through ctypes with plain types only.
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#ifdef GX071
+#include "geniex-v0.7.1.h"
+#else
 #include "geniex.h"
+#endif
 
 static geniex_LLM* g_llm = NULL;
 
@@ -18,13 +23,19 @@ int shim_load(const char* model, const char* mode, int n_ctx) {
     fprintf(stderr, "device=%s ngl=%d mode=%s\n", ro.device_id ? ro.device_id : "(default)", ro.ngl, mode);
 
     geniex_LlmCreateInput in = {0};
+#ifndef GX071
     in.model_name = model;
+#endif
     in.model_path = model;
     in.plugin_id = "llama_cpp";
     in.device_id = ro.device_id;
     in.config.n_ctx = n_ctx;
     in.config.n_gpu_layers = ro.ngl;
+#ifdef GX071
+    in.config.power_mode = GENIEX_POWER_MODE_BURST;  // zero would mean LOW_POWER_SAVER
+#else
     in.config.enable_sampling = true;
+#endif
     rc = geniex_llm_create(&in, &g_llm);
     if (rc < 0) fprintf(stderr, "llm_create: %s\n", geniex_get_error_message(rc));
     return rc;
