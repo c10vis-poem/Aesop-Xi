@@ -11,6 +11,21 @@ lp=$(tr '[:upper:]' '[:lower:]' <<<"$prompt")
 # Wrap-up mode ONLY from the /wrapup command at the start of the prompt (mentions of "wrap up" don't count).
 wrapcmd=; grep -qE '^/wrap-?up([[:space:]]|$)' <<<"$lp" && { touch "$st/wrapup-$sid"; wrapcmd=1; }
 grep -q 'push now' <<<"$lp" && touch "$st/pushnow-$sid"
+# Operator check-off (sessions with a RESUME snapshot): #ok | #ok 1,3 | #defer 2 | #reject 2.
+# Any mark = checked in. "#ok N" confirms N as done if a done was proposed, else accepts the plan item.
+if [ -f "$st/resume-$sid.snap.md" ]; then
+  grep -oE '#(ok|defer|reject)([[:space:]]+[0-9][0-9, ]*)?' <<<"$lp" | while read -r m rest; do
+    touch "$st/checkin-$sid"
+    for n in $(tr ',' ' ' <<<"$rest"); do
+      case $m in
+        '#ok') grep -q "^$n	done	" "$st/resume-items-$sid.tsv" 2>/dev/null && v=confirmed-done || v=accepted ;;
+        '#defer') v=deferred ;;
+        '#reject') v=rejected; grep -v "^$n	" "$st/resume-items-$sid.tsv" > "$st/ri.tmp" 2>/dev/null; mv "$st/ri.tmp" "$st/resume-items-$sid.tsv" 2>/dev/null ;;
+      esac
+      printf '%s\t%s\t%s\n' "$n" "$v" "$(date +%T)" >> "$st/confirm-$sid.tsv"
+    done
+  done
+fi
 # Operator keeps a branch from deletion: "#keep-branch <name>" (session-wide list read by ship-session)
 grep -oE '#keep-branch[[:space:]]+[^[:space:]]+' <<<"$prompt" | awk '{print $2}' >> "$st/keep-$sid.txt"
 H=$(dirname "$(realpath "$0")")
