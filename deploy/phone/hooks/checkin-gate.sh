@@ -21,5 +21,5 @@ case $tool in
   *) why="$tool" ;;
 esac
 echo "$(date +%T) BLOCK checkin-gate: $tool" >> "$st/enforce-$sid.log"
-echo "BLOCKED (check-in): no changes before the operator checks in ($why). Post the START HERE plan (each item + what you'll do + tools/skills you'll load), run \`resume-item plan\`, and end the turn. The operator replies #ok, #ok 1,3, #defer 2, or a side task + #defer." >&2
+echo "BLOCKED (check-in): no changes before the operator checks in ($why). Post the START HERE plan (each item + what you'll do + tools/skills you'll load), run \`resume-item plan\`, and end the turn. The operator replies /ok, /ok 1,3, /defer 2, or a side task + /defer (# forms also work)." >&2
 exit 2
