@@ -18,3 +18,9 @@ Sources live in `aesop-xi/deploy/phone/hooks/`. Live copies are in `~/.claude/ho
 | `stop-gate.sh` (H1 Stop) | Stop | turn can't end until RESUME was read, every RESUME "START HERE" item has a status (`~/bin/resume-item <n> done\|blocked "<note>"`), task-observer loaded + session-start scan written, no ENFORCEMENTS pending. `#skip-enforce` skips (logged). |
 
 Operator override for enforcement (user-typed only): `#skip-enforce` in a prompt (logged).
+
+## Install on a fresh device
+1. Copy `*.sh` here to `~/.claude/hooks/` (and `../bin/resume-item` to `~/bin/`), then `chmod +x`.
+2. Merge `settings.hooks.json` into `~/.claude/settings.json` (`jq -s '.[0] * .[1]' ~/.claude/settings.json settings.hooks.json`). It is the exact live `hooks` block, including the H1 `Stop` gate.
+3. Copy `ENFORCEMENTS.md` to `~/.claude/ENFORCEMENTS.md`.
+User-level settings apply to every session on the device, whichever repo it starts in.
