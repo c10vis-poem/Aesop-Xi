@@ -12,7 +12,7 @@ case "${1:-}" in
   -h|--help) sed -n 2,4p "$0"; exit ;;
 esac
 curl -s --max-time 2 http://127.0.0.1:$PORT/health >/dev/null && { echo "already running: $(curl -s http://127.0.0.1:$PORT/health)"; exit; }
-MODEL=${1:-$HOME/downloads/Qwen3.5-2B-Q4_0.gguf}; MODE=${2:-npu}
+MODEL=${1:-/storage/emulated/0/Documents/Models/gguf/Qwen3.5-2B-Q4_0.gguf}; MODE=${2:-npu}
 ln -sf llama_cpp/libggml-htp-v79.so "$G/lib/libggml-htp-v79.so"
 cd "$G" || exit 1
 # Only the server is backgrounded (not a subshell holding this script's stdout open), with stdin detached.
