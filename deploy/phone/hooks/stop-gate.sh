@@ -35,6 +35,11 @@ elif [ -f "$st/resume-$sid.ok" ] && [ ! "$vault/skill-observations/checkpoints.l
   miss+=("Run the task-observer session-start scan (it appends to skill-observations/checkpoints.log)")
 fi
 
+# Wrap-up mode: RESUME.md must be rewritten this session (newer than when it was read at start)
+if [ -f "$st/wrapup-$sid" ] && [ -f "$st/resume-$sid.ok" ] && [ ! "$vault/RESUME.md" -nt "$st/resume-$sid.ok" ]; then
+  miss+=("Wrap-up: rewrite $vault/RESUME.md from scratch (WRAP-UP.md step 5) — it hasn't changed this session")
+fi
+
 # ENFORCEMENTS requirements still pending for this prompt
 [ -s "$st/required-$sid.tsv" ] && miss+=("Pending ENFORCEMENTS: $(cut -f2 "$st/required-$sid.tsv" | paste -sd ';')")
 
