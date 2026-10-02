@@ -2,6 +2,8 @@
 
 *Written 2026-10-01. Every command below was tested on this phone unless marked **not tested**. Device: Snapdragon 8 Elite (HTP v79).*
 
+*Build history, how the NPU server works, and how to upgrade GenieX: [NPU-SERVE-BUILD-LOG.md](NPU-SERVE-BUILD-LOG.md).*
+
 ---
 
 ## 1. Shortcut commands (type these in Termux)
@@ -157,7 +159,7 @@ Each step installs or changes things, so run them in a session with Claude, one 
 
 ## 8. Open items (as of 2026-10-01)
 
-- **GenieX v0.7.1** runs at normal speed through `npu-serve` (decode ~17 tok/s), so the earlier ~3 tok/s was not the build. `npu-ask` still uses the v0.3.14 bench tool.
+- **GenieX v0.7.1** runs at normal speed through `npu-serve` (decode ~17 tok/s), and `geniex-bench` v0.7.1 now gives decode 15.9 tok/s. The earlier ~3 tok/s didn't reproduce (cause unknown). `npu-ask` still uses the v0.3.14 bench tool.
 - ~~GenieX HTTP wrapper~~ **done 2026-10-02:** `npu-serve` (§3).
 - **Speed gap:** ~17–19 tok/s vs Qualcomm's ~45–50 for a 2B Q4_0. Next: compare decode with other apps closed, and test the ADB-shell user.
 - **Qualcomm chat app build** (§4).
