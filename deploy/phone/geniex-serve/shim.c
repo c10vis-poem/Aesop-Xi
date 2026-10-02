@@ -11,11 +11,14 @@
 #endif
 
 static geniex_LLM* g_llm = NULL;
+#ifdef GX071
+static geniex_VLM* g_vlm = NULL;
+#endif
 
-int shim_load(const char* model, const char* mode, int n_ctx) {
+int shim_load2(const char* model, const char* mode, int n_ctx, const char* plugin) {
     int rc = geniex_init();
     if (rc < 0) { fprintf(stderr, "geniex_init: %s\n", geniex_get_error_message(rc)); return rc; }
-    geniex_ResolveDeviceInput ri = { "llama_cpp", model, mode, 999 };
+    geniex_ResolveDeviceInput ri = { plugin, model, mode, 999 };
     geniex_ResolveDeviceOutput ro = {0};
     rc = geniex_resolve_device(&ri, &ro);
     if (rc < 0) { fprintf(stderr, "resolve_device: %s\n", geniex_get_error_message(rc)); return rc; }
@@ -27,9 +30,9 @@ int shim_load(const char* model, const char* mode, int n_ctx) {
     in.model_name = model;
 #endif
     in.model_path = model;
-    in.plugin_id = "llama_cpp";
+    in.plugin_id = plugin;
     in.device_id = ro.device_id;
-    in.config.n_ctx = n_ctx;
+    in.config.n_ctx = strcmp(plugin, "qairt") == 0 ? 0 : n_ctx;  // qairt bundles fix their own context; it rejects n_ctx
     in.config.n_gpu_layers = ro.ngl;
 #ifdef GX071
     in.config.power_mode = GENIEX_POWER_MODE_BURST;  // zero would mean LOW_POWER_SAVER
@@ -38,6 +41,18 @@ int shim_load(const char* model, const char* mode, int n_ctx) {
 #endif
     rc = geniex_llm_create(&in, &g_llm);
     if (rc < 0) fprintf(stderr, "llm_create: %s\n", geniex_get_error_message(rc));
+    return rc;
+}
+
+int shim_load(const char* model, const char* mode, int n_ctx) { return shim_load2(model, mode, n_ctx, "llama_cpp"); }
+
+// Free the loaded model so another can be loaded (geniex_init is idempotent).
+int shim_unload(void) {
+    int rc = 0;
+    if (g_llm) { rc = geniex_llm_destroy(g_llm); g_llm = NULL; }
+#ifdef GX071
+    if (g_vlm) { rc = geniex_vlm_destroy(g_vlm); g_vlm = NULL; }
+#endif
     return rc;
 }
 
@@ -80,3 +95,77 @@ int shim_chat(int n, const char** roles, const char** contents, int max_tokens,
 }
 
 void shim_free(void* p) { geniex_free(p); }
+
+#ifdef GX071
+// VLM: a GGUF + mmproj (llama_cpp) or a QAIRT VLM bundle dir (qairt; mmproj may be NULL).
+int shim_load_vlm(const char* model, const char* mmproj, const char* mode, int n_ctx, const char* plugin) {
+    int rc = geniex_init();
+    if (rc < 0) { fprintf(stderr, "geniex_init: %s\n", geniex_get_error_message(rc)); return rc; }
+    int qairt = strcmp(plugin, "qairt") == 0;
+    geniex_ResolveDeviceInput ri = { plugin, model, mode, 999 };
+    geniex_ResolveDeviceOutput ro = {0};
+    rc = geniex_resolve_device(&ri, &ro);
+    if (rc < 0) { fprintf(stderr, "resolve_device: %s\n", geniex_get_error_message(rc)); return rc; }
+    if (ro.warning) fprintf(stderr, "resolve_device warning: %s\n", ro.warning);
+    fprintf(stderr, "vlm device=%s ngl=%d mode=%s\n", ro.device_id ? ro.device_id : "(default)", qairt ? 0 : ro.ngl, mode);
+
+    geniex_VlmCreateInput in = {0};
+    in.model_path = model;
+    in.mmproj_path = (mmproj && *mmproj) ? mmproj : NULL;
+    in.plugin_id = plugin;
+    in.device_id = ro.device_id;
+    in.config.n_ctx = qairt ? 0 : n_ctx;          // qairt: PARAM_NOT_SUPPORTED unless 0
+    in.config.n_gpu_layers = qairt ? 0 : ro.ngl;  // qairt: likewise
+    in.config.power_mode = GENIEX_POWER_MODE_BURST;
+    rc = geniex_vlm_create(&in, &g_vlm);
+    if (rc < 0) fprintf(stderr, "vlm_create: %s\n", geniex_get_error_message(rc));
+    return rc;
+}
+
+// Like shim_chat; images[i] is an image file path for message i, or NULL.
+// Each image becomes an "image" content part after that message's text.
+int shim_vlm_chat(int n, const char** roles, const char** contents, const char** images, int max_tokens,
+                  float temperature, float top_p, int enable_thinking,
+                  geniex_token_callback cb, void* ud,
+                  char** out_text, double* stats, char* stop_reason, int stop_reason_len) {
+    if (!g_vlm) return -1;
+    geniex_vlm_reset(g_vlm);
+
+    geniex_VlmChatMessage* msgs = calloc(n, sizeof *msgs);
+    geniex_VlmContent* parts = calloc(2 * n, sizeof *parts);
+    geniex_Path* paths = calloc(n, sizeof *paths);
+    int ni = 0;
+    for (int i = 0; i < n; i++) {
+        geniex_VlmContent* c = parts + 2 * i; int k = 0;
+        c[k].type = "text"; c[k].text = contents[i]; k++;  // text then image, as the vendor CLI (infer.go) does
+        if (images && images[i]) { c[k].type = "image"; c[k].text = images[i]; k++; paths[ni++] = images[i]; }
+        msgs[i].role = roles[i]; msgs[i].contents = c; msgs[i].content_count = k;
+    }
+    geniex_VlmApplyChatTemplateInput ti = { msgs, n, NULL, enable_thinking != 0, false };
+    geniex_VlmApplyChatTemplateOutput to = {0};
+    int rc = geniex_vlm_apply_chat_template(g_vlm, &ti, &to);
+    free(msgs); free(parts);
+    if (rc < 0) { fprintf(stderr, "vlm chat_template: %s\n", geniex_get_error_message(rc)); free(paths); return rc; }
+
+    geniex_SamplerConfig sc = {0};
+    sc.temperature = temperature; sc.top_p = top_p; sc.top_k = 40; sc.min_p = 0.05f;
+    sc.repetition_penalty = 1.0f; sc.seed = -1;
+    geniex_GenerationConfig gc = {0};
+    gc.max_tokens = max_tokens; gc.sampler_config = &sc;
+    gc.image_paths = ni ? paths : NULL; gc.image_count = ni;
+    geniex_VlmGenerateInput gi = {0};
+    gi.prompt_utf8 = to.formatted_text; gi.config = &gc; gi.on_token = cb; gi.user_data = ud;
+    geniex_VlmGenerateOutput go = {0};
+    rc = geniex_vlm_generate(g_vlm, &gi, &go);
+    geniex_free(to.formatted_text); free(paths);
+    if (rc < 0) { fprintf(stderr, "vlm generate: %s\n", geniex_get_error_message(rc)); return rc; }
+
+    *out_text = go.full_text;
+    stats[0] = (double)go.profile_data.prompt_tokens;
+    stats[1] = (double)go.profile_data.generated_tokens;
+    stats[2] = go.profile_data.prefill_speed;
+    stats[3] = go.profile_data.decoding_speed;
+    snprintf(stop_reason, stop_reason_len, "%s", go.profile_data.stop_reason ? go.profile_data.stop_reason : "");
+    return 0;
+}
+#endif

@@ -18,6 +18,7 @@ Sources live in `aesop-xi/deploy/phone/hooks/`. Live copies are in `~/.claude/ho
 | `ship-session.sh` | SessionEnd | ships only repos this session touched, only files changed this session: branch → commit (gitleaks) → PR → auto-merge; writes `## Shipped` into the recap |
 | `archive-scratchpad.sh` | SessionEnd / PreCompact | copies the session scratchpad to `~/.claude/scratchpad-archive/` |
 | `stop-gate.sh` (H1 Stop) | Stop | turn can't end until RESUME was read, every RESUME "START HERE" item has a status (`~/bin/resume-item <n> done\|blocked "<note>"`), task-observer loaded + session-start scan written, no ENFORCEMENTS pending. `#skip-enforce` skips (logged). |
+| `run-hook.sh` | (launcher) | aesop-xi `.claude/settings.json` registers every hook above through this, so any session started in aesop-xi gets H1–H7 on any device. Stands down when `~/.claude/hooks/<name>` exists (global copy already fires), so nothing runs twice. |
 
 Operator override for enforcement (user-typed only): `#skip-enforce` in a prompt (logged).
 

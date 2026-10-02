@@ -2,6 +2,11 @@
 
 Durable cross-session backlog. Not rewritten each session — items persist until resolved or explicitly dropped.
 
+## Added 2026-10-02
+
+- **npu-serve:** tool calls (OpenAI `tools`) not wired; only the first image per message is used; InternVL 2B (8 Elite and X Elite bundles, both unpacked in Models/installed) not in models.json yet — X Elite build ran 27.5 tok/s here. Kokoro TTS script `deploy/phone/tts_speak.py` fails on the multi-lang v1.0 model (needs lexicon/lang) — operator said leave it for now.
+- **Hooks for other agents:** Hermes / dsh don't get H1–H7 (grill topic).
+
 ## Blocking / decisions needed
 
 - **[P0] OmniRoute deploy to Google Cloud VM.** Operator decided 2026-09-15: Google Cloud VM is the target. Needs: OmniRoute installed + configured on VM, port 20128 reachable from phone, `tools/omniroute/start.sh` updated to point at VM endpoint instead of localhost, env var `OMNIROUTE_URL` set in `~/.omniroute/.env`.
