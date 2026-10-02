@@ -9,6 +9,6 @@ r="$top/RESUME.md"; [ -n "$top" ] && [ -f "$r" ] || r="$HOME/storage/shared/Docu
 r=$(realpath "$r")
 if [ "$(jq -r .tool_name <<<"$in")" = Read ]; then
   f=$(jq -r '.tool_input.file_path // ""' <<<"$in")
-  [ "$(realpath "$f" 2>/dev/null)" = "$r" ] && { mkdir -p "${ok%/*}"; touch "$ok"; exit 0; }
+  [ "$(realpath "$f" 2>/dev/null)" = "$r" ] && { mkdir -p "${ok%/*}"; sha256sum "$r" | cut -d" " -f1 > "$ok"; exit 0; }  # content hash: mtime is unreliable on shared storage
 fi
 echo "BLOCKED (resume-gate): Read $r first, then follow it." >&2; exit 2

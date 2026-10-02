@@ -35,8 +35,12 @@ elif [ -f "$st/resume-$sid.ok" ] && [ ! "$vault/skill-observations/checkpoints.l
   miss+=("Run the task-observer session-start scan (it appends to skill-observations/checkpoints.log)")
 fi
 
-# Wrap-up mode: RESUME.md must be rewritten this session (newer than when it was read at start)
-if [ -f "$st/wrapup-$sid" ] && [ -f "$st/resume-$sid.ok" ] && [ ! "$vault/RESUME.md" -nt "$st/resume-$sid.ok" ]; then
+# Wrap-up mode: RESUME.md must be rewritten this session (content differs from session start)
+# Compare content, not mtime (shared storage doesn't update mtime on rewrite). Baseline = hash
+# recorded by resume-gate at session start, else the last synced version on origin/main.
+base=$(cat "$st/resume-$sid.ok" 2>/dev/null)
+[ -n "$base" ] || base=$(git -C "$vault" show origin/main:RESUME.md 2>/dev/null | sha256sum | cut -d" " -f1)
+if [ -f "$st/wrapup-$sid" ] && [ -f "$st/resume-$sid.ok" ] && [ "$(sha256sum "$vault/RESUME.md" | cut -d" " -f1)" = "$base" ]; then
   miss+=("Wrap-up: rewrite $vault/RESUME.md from scratch (WRAP-UP.md step 5) — it hasn't changed this session")
 fi
 
