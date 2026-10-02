@@ -22,7 +22,8 @@ if [ -f "$r" ]; then
     miss+=("Read $r")
   else
     # numbered items under the START HERE heading, up to the next heading
-    for n in $(awk '/^#+ .*START HERE/{f=1;next} f&&/^#/{exit} f&&/^[0-9]+\. /{sub(/\..*/,"");print}' "$r"); do
+    snap="$st/resume-$sid.snap.md"; [ -f "$snap" ] || snap="$r"   # items as they were at session start
+    for n in $(awk '/^#+ .*START HERE/{f=1;next} f&&/^#/{exit} f&&/^[0-9]+\. /{sub(/\..*/,"");print}' "$snap"); do
       grep -q "^$n	" "$items" 2>/dev/null || miss+=("RESUME item $n has no status: run resume-item $n done|blocked \"<evidence / what you need from the operator>\"")
     done
   fi
