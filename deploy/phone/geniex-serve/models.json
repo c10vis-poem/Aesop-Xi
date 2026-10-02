@@ -25,7 +25,8 @@
     "mmproj": "/storage/emulated/0/Documents/Models/gguf/mmproj-OpenGVLab_InternVL3_5-8B-f16.gguf"
   },
   "internvl3.5-4b": {
-    "path": "/storage/emulated/0/Documents/Models/installed/intern3_5_vl_4b-8elite/intern3_5_vl_4b-geniex_qairt-w4a16-qualcomm_snapdragon_8_elite_for_galaxy",
-    "plugin": "qairt"
+    "path": "/storage/emulated/0/Documents/Models/installed/intern3_5_vl_4b-8elite/intern3_5_vl_4b-geniex_qairt-w4a16-qualcomm_snapdragon_8_elite_for_galaxy/genie_config.json",
+    "plugin": "qairt",
+    "vlm": true
   }
 }
