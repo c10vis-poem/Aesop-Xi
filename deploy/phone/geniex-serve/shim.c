@@ -12,10 +12,10 @@
 
 static geniex_LLM* g_llm = NULL;
 
-int shim_load(const char* model, const char* mode, int n_ctx) {
+int shim_load2(const char* model, const char* mode, int n_ctx, const char* plugin) {
     int rc = geniex_init();
     if (rc < 0) { fprintf(stderr, "geniex_init: %s\n", geniex_get_error_message(rc)); return rc; }
-    geniex_ResolveDeviceInput ri = { "llama_cpp", model, mode, 999 };
+    geniex_ResolveDeviceInput ri = { plugin, model, mode, 999 };
     geniex_ResolveDeviceOutput ro = {0};
     rc = geniex_resolve_device(&ri, &ro);
     if (rc < 0) { fprintf(stderr, "resolve_device: %s\n", geniex_get_error_message(rc)); return rc; }
@@ -27,9 +27,9 @@ int shim_load(const char* model, const char* mode, int n_ctx) {
     in.model_name = model;
 #endif
     in.model_path = model;
-    in.plugin_id = "llama_cpp";
+    in.plugin_id = plugin;
     in.device_id = ro.device_id;
-    in.config.n_ctx = n_ctx;
+    in.config.n_ctx = strcmp(plugin, "qairt") == 0 ? 0 : n_ctx;  // qairt bundles fix their own context; it rejects n_ctx
     in.config.n_gpu_layers = ro.ngl;
 #ifdef GX071
     in.config.power_mode = GENIEX_POWER_MODE_BURST;  // zero would mean LOW_POWER_SAVER
@@ -40,6 +40,11 @@ int shim_load(const char* model, const char* mode, int n_ctx) {
     if (rc < 0) fprintf(stderr, "llm_create: %s\n", geniex_get_error_message(rc));
     return rc;
 }
+
+int shim_load(const char* model, const char* mode, int n_ctx) { return shim_load2(model, mode, n_ctx, "llama_cpp"); }
+
+// Free the loaded model so another can be loaded (geniex_init is idempotent).
+int shim_unload(void) { int rc = 0; if (g_llm) { rc = geniex_llm_destroy(g_llm); g_llm = NULL; } return rc; }
 
 // One stateless chat completion. Tokens stream through cb; full text in *out_text
 // (free with shim_free). stats = {prompt_tokens, generated_tokens, prefill tok/s, decode tok/s}.
