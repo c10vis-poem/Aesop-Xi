@@ -11,6 +11,8 @@ lp=$(tr '[:upper:]' '[:lower:]' <<<"$prompt")
 # Wrap-up mode ONLY from the /wrapup command at the start of the prompt (mentions of "wrap up" don't count).
 wrapcmd=; grep -qE '^/wrap-?up([[:space:]]|$)' <<<"$lp" && { touch "$st/wrapup-$sid"; wrapcmd=1; }
 grep -q 'push now' <<<"$lp" && touch "$st/pushnow-$sid"
+# Operator keeps a branch from deletion: "#keep-branch <name>" (session-wide list read by ship-session)
+grep -oE '#keep-branch[[:space:]]+[^[:space:]]+' <<<"$prompt" | awk '{print $2}' >> "$st/keep-$sid.txt"
 H=$(dirname "$(realpath "$0")")
 
 # A /skill typed by the operator counts as loading that skill.

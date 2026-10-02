@@ -45,6 +45,18 @@ if [ -f "$st/wrapup-$sid" ] && [ -f "$st/resume-$sid.ok" ] && [ "$(sha256sum "$v
   miss+=("Wrap-up: rewrite $vault/RESUME.md from scratch (WRAP-UP.md step 5) — it hasn't changed this session")
 fi
 
+# Wrap-up mode: files this session wrote inside c10vis-poem repos must be committed (vault exempt: GitSync)
+if [ -f "$st/wrapup-$sid" ]; then
+  rec=$(ls -t "$vault"/_recaps/*-"${sid:0:8}".md 2>/dev/null | head -1)
+  [ -n "$rec" ] && awk '/^## Files written/{f=1;next} /^## /{f=0} f&&/^- /{sub(/^- /,"");print}' "$rec" | while read -r fw; do
+    [ -e "$fw" ] || continue
+    t=$(git -C "${fw%/*}" rev-parse --show-toplevel 2>/dev/null) || continue
+    case $t in */NovAExorpus*|*/storage/emulated/*) continue ;; esac
+    [ -n "$(git -C "$t" status --porcelain -- "$fw" 2>/dev/null)" ] && echo "$t"
+  done | sort -u > "$st/uncommitted-$sid.txt"
+  [ -s "$st/uncommitted-$sid.txt" ] && miss+=("Wrap-up: uncommitted session work in: $(paste -sd ' ' "$st/uncommitted-$sid.txt") — commit on a topic branch (WRAP-UP step 1)")
+fi
+
 # ENFORCEMENTS requirements still pending for this prompt
 [ -s "$st/required-$sid.tsv" ] && miss+=("Pending ENFORCEMENTS: $(cut -f2 "$st/required-$sid.tsv" | paste -sd ';')")
 
