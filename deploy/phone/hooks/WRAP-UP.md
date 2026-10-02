@@ -1,6 +1,6 @@
 # Session wrap-up protocol
 
-Triggered ONLY by the `/wrapup` command (`~/.claude/commands/wrapup.md`); mentioning "wrap up" in a sentence does nothing. Wrap-up mode unlocks the git gate. Do the steps in order, then tell the operator.
+Triggered ONLY by the `/wrapup` command (`~/.claude/commands/wrapup.md`); mentioning "wrap up" in a sentence does nothing. Wrap-up mode unlocks the git gate. Do the steps in order, then tell the operator. The Stop gate won't let the session close until every START HERE item is confirmed done (`#ok N`) or deferred (`#defer N`, then in PENDING.md) by the operator.
 
 1. **Commit** every repo touched this session onto local topic branches (good messages, no `git add -A` of old work). Don't push one by one.
 2. **Task-observer:** log this session's corrections and rule violations as observations, and mark resolved ones.

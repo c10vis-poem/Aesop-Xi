@@ -5,6 +5,7 @@ Sources live in `aesop-xi/deploy/phone/hooks/`. Live copies are in `~/.claude/ho
 | File | Event | What it does |
 |---|---|---|
 | `git-hooks/dispatch` (+ symlinks) | git, every repo (global hooksPath `~/.config/git/hooks`) | gitleaks on pre-commit / pre-push. A secret blocks it. Then runs the repo's own hook. Exceptions only through the repo's `.gitleaksignore`. |
+| `checkin-gate.sh` | PreToolUse `*` | after RESUME is read: no changes (edits, state-changing Bash) until the operator checks in with `#ok` / `#ok 1,3` / `#defer 2` / `#reject 2`. Reading, read-only Bash, the observer checkpoint and `resume-item plan` stay allowed. Only for sessions started with the RESUME snapshot |
 | `secret-guard.sh` | PreToolUse `Bash\|Read` | refuses printing secret files unless the values are redacted; refuses git hook skipping or hooksPath changes |
 | `resume-gate.sh` | PreToolUse `*` | no tool runs until RESUME.md (the repo's, else the vault's) has been read |
 | `enforce-gate.sh` | PreToolUse `*` | no tool runs until this prompt's ENFORCEMENTS requirements are met |
@@ -27,3 +28,10 @@ Operator override for enforcement (user-typed only): `#skip-enforce` in a prompt
 4. Ship: push → PR → auto-merge (squash) → branch deleted after MERGED (H4 ship-session), on "push now" or `/wrapup`.
 5. Keep a branch: type `#keep-branch <name>` → ship pushes a `saved/<name>` copy before merging.
 6. `/wrapup` can't finish with uncommitted session work in any repo (Stop gate).
+
+## Session start / end (operator check-off)
+1. RESUME read → snapshot + fingerprint saved (resume-gate).
+2. Agent posts the START HERE plan (each item, what it will do, tools/skills), runs `resume-item plan`, ends the turn.
+3. Operator replies `#ok` (all), `#ok 1,3`, `#defer 2`, or a side task + `#defer`. Until then: no changes (checkin-gate).
+4. Agent marks finished items `resume-item <n> done "<evidence>"`; they count only after the operator's `#ok <n>`. `#reject <n>` clears a proposal.
+5. `/wrapup`: every item must be operator-confirmed done or deferred (deferred ones in PENDING.md), RESUME rewritten, session work committed.
