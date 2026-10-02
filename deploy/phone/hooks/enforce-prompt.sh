@@ -8,7 +8,8 @@ req="$st/required-$sid.tsv"; done_="$st/satisfied-$sid.tsv"; loaded="$st/loaded-
 touch "$done_" "$loaded"; : > "$req"
 rm -f "$st/pushnow-$sid"
 lp=$(tr '[:upper:]' '[:lower:]' <<<"$prompt")
-grep -qE 'wrap[ -]?up|close (the )?session|end (the )?session|session close' <<<"$lp" && touch "$st/wrapup-$sid"
+# Wrap-up mode ONLY from the /wrapup command at the start of the prompt (mentions of "wrap up" don't count).
+wrapcmd=; grep -qE '^/wrap-?up([[:space:]]|$)' <<<"$lp" && { touch "$st/wrapup-$sid"; wrapcmd=1; }
 grep -q 'push now' <<<"$lp" && touch "$st/pushnow-$sid"
 H=$(dirname "$(realpath "$0")")
 
@@ -26,6 +27,8 @@ jq -r '.required[]? | [.id, .require, .scope] | @tsv' <<<"$out" 2>/dev/null | wh
   [ "$scope" = session ] && grep -qxF "$r" "$done_" && continue
   printf '%s\t%s\t%s\n' "$id" "$r" "$scope" >> "$req"
 done
+
+[ -n "$wrapcmd" ] && printf 'wrapup\tread: ~/.claude/WRAP-UP.md\tturn\n' >> "$req"
 
 if [ -s "$req" ]; then
   echo "ENFORCEMENTS: before other tools, do: $(cut -f2 "$req" | paste -sd ';' | sed 's/;/; /g') (see ~/.claude/ENFORCEMENTS.md)"

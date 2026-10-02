@@ -23,7 +23,7 @@ Operator override (user-typed only): the operator puts `#skip-enforce` in a prom
 | observer | kw: observation, observations, task-observer, skill review | skill: task-observer | session | log + review protocol |
 | hooks | kw: hook, hooks, settings.json, enforcement, enforcements | read: ~/.claude/hooks/README.md | session | what is already installed |
 | npu | kw: npu, htp, hexagon, genie, geniex, qnn, qairt, litert, snapdragon, gguf, ggml | read: ~/.claude/NPU-ON-DEVICE.md | session | settled NPU facts; no computer/ADB pushback |
-| wrapup | kw: wrap up, wrap-up, wrapup, close session, end session, session close | read: ~/.claude/WRAP-UP.md | turn | session wrap-up protocol; unlocks git gate |
+| wrapup | cmd: /wrapup (set by enforce-prompt.sh, not keywords) | read: ~/.claude/WRAP-UP.md | turn | session wrap-up protocol; unlocks git gate. Mentions of "wrap up" do NOT trigger it |
 | inventory | kw: new hook, new script, new skill, new tool, write a hook, write a script, write a skill, build a tool, create a hook, create a script, create a skill, add a hook, add a script | read: ~/.claude/INVENTORY.md | session | check existing before building |
 | vault | kw: vault, obsidian, wikilink, wikilinks | skill: obsidian-vault | session | vault notes and edits |
 | graphify | kw: graphify, graphify-out, knowledge graph | skill: graphify | session | operator's graphify trigger |
