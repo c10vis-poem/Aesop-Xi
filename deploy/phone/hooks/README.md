@@ -17,4 +17,4 @@ Sources live in `aesop-xi/deploy/phone/hooks/`. Live copies are in `~/.claude/ho
 | `archive-scratchpad.sh` | SessionEnd / PreCompact | copies the session scratchpad to `~/.claude/scratchpad-archive/` |
 | `stop-gate.sh` (H1 Stop) | Stop | turn can't end until RESUME was read, every RESUME "START HERE" item has a status (`~/bin/resume-item <n> done\|blocked "<note>"`), task-observer loaded + session-start scan written, no ENFORCEMENTS pending. `#skip-enforce` skips (logged). |
 
-Escape hatch for enforcement: `#skip-enforce` in a prompt (logged).
+Operator override for enforcement (user-typed only): `#skip-enforce` in a prompt (logged).

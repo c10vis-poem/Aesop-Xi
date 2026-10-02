@@ -8,7 +8,7 @@ tp=$(jq -r '.transcript_path // empty' <<<"$in"); cwd=$(jq -r '.cwd // ""' <<<"$
 st="$HOME/.claude/state"; log="$st/enforce-$sid.log"; items="$st/resume-items-$sid.tsv"
 vault="$HOME/storage/shared/Documents/NovAExorpus"
 
-# Escape hatch: latest real user prompt contains #skip-enforce
+# Operator override (manual, user-typed only): latest real user prompt contains #skip-enforce
 if [ -f "$tp" ] && jq -r 'select(.type=="user" and (.message.content|type)=="string") | .message.content' "$tp" 2>/dev/null | tail -1 | grep -q '#skip-enforce'; then
   echo "$(date +%T) STOP-SKIP #skip-enforce" >> "$log"; exit 0
 fi
