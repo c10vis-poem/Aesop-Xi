@@ -13,7 +13,18 @@ wrapcmd=; grep -qE '^/wrap-?up([[:space:]]|$)' <<<"$lp" && { touch "$st/wrapup-$
 grep -q 'push now' <<<"$lp" && touch "$st/pushnow-$sid"
 # Operator check-off (sessions with a RESUME snapshot): #ok | #ok 1,3 | #defer 2 | #reject 2.
 # Any mark = checked in. "#ok N" confirms N as done if a done was proposed, else accepts the plan item.
+# Slash forms (/ok, /ok 1,3, /defer 2, /reject 2) at the start of the prompt = the # forms.
+lp=$(sed -E 's#^/(ok|defer|reject)([[:space:]]|$)#\#\1\2#' <<<"$lp")
 if [ -f "$st/resume-$sid.snap.md" ]; then
+  # Bare "#ok" / "/ok" = accept every START HERE item as proposed (done → confirmed, blocked → deferred, else accepted).
+  if grep -qE '^#ok[[:space:]]*$' <<<"$lp"; then
+    touch "$st/checkin-$sid"
+    for n in $(awk '/^#+ .*START HERE/{f=1;next} f&&/^#/{exit} f&&/^[0-9]+\. /{sub(/\..*/,"");print}' "$st/resume-$sid.snap.md"); do
+      s=$(grep "^$n	" "$st/resume-items-$sid.tsv" 2>/dev/null | tail -1 | cut -f2)
+      case $s in done) v=confirmed-done ;; blocked) v=deferred ;; *) v=accepted ;; esac
+      printf '%s\t%s\t%s\n' "$n" "$v" "$(date +%T)" >> "$st/confirm-$sid.tsv"
+    done
+  fi
   grep -oE '#(ok|defer|reject)([[:space:]]+[0-9][0-9, ]*)?' <<<"$lp" | while read -r m rest; do
     touch "$st/checkin-$sid"
     for n in $(tr ',' ' ' <<<"$rest"); do

@@ -23,7 +23,7 @@ if [ -f "$r" ]; then
   elif [ -f "$st/resume-$sid.snap.md" ]; then
     # Operator check-off flow: post the plan once, then wait for the operator's marks
     [ -f "$st/plan-$sid.txt" ] || [ -f "$st/checkin-$sid" ] || \
-      miss+=("Post the START HERE plan to the operator (each item, what you'll do, tools/skills to load), run: resume-item plan, then end the turn for their #ok / #defer")
+      miss+=("Post the START HERE plan to the operator (each item, what you'll do, tools/skills to load), run: resume-item plan, then end the turn for their /ok N / /defer N")
     if [ -f "$st/wrapup-$sid" ]; then   # closing: every item confirmed done or deferred BY THE OPERATOR
       for n in $(awk '/^#+ .*START HERE/{f=1;next} f&&/^#/{exit} f&&/^[0-9]+\. /{sub(/\..*/,"");print}' "$st/resume-$sid.snap.md"); do
         last=$(grep "^$n	" "$st/confirm-$sid.tsv" 2>/dev/null | tail -1 | cut -f2)
@@ -31,7 +31,7 @@ if [ -f "$r" ]; then
           confirmed-done) ;;
           deferred) t=$(awk -v n="$n" '/^#+ .*START HERE/{f=1;next} f&&/^#/{exit} f&&$0 ~ "^"n"\\. "{sub(/^[0-9]+\. /,""); gsub(/\*/,""); print substr($0,1,40); exit}' "$st/resume-$sid.snap.md")
                     grep -qF -- "$t" "$vault/PENDING.md" 2>/dev/null || miss+=("Wrap-up: item $n was deferred by the operator — add it to PENDING.md (\"$t…\")") ;;
-          *) miss+=("Wrap-up: item $n not closed — needs the operator's #ok $n (after you mark it: resume-item $n done \"<evidence>\") or #defer $n") ;;
+          *) miss+=("Wrap-up: item $n not closed — needs the operator's /ok (after you mark it: resume-item $n done \"<evidence>\") or /defer $n") ;;
         esac
       done
     fi

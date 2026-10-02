@@ -33,6 +33,6 @@ Operator override for enforcement (user-typed only): `#skip-enforce` in a prompt
 ## Session start / end (operator check-off)
 1. RESUME read → snapshot + fingerprint saved (resume-gate).
 2. Agent posts the START HERE plan (each item, what it will do, tools/skills), runs `resume-item plan`, ends the turn.
-3. Operator replies `#ok` (all), `#ok 1,3`, `#defer 2`, or a side task + `#defer`. Until then: no changes (checkin-gate).
+3. Operator replies `/ok 1,3`, `/defer 2`, `/reject 2` (or the `#` forms) to the plan. At the end of the session a bare `/ok` confirms everything as marked: done → confirmed, blocked → deferred. Until then: no changes (checkin-gate).
 4. Agent marks finished items `resume-item <n> done "<evidence>"`; they count only after the operator's `#ok <n>`. `#reject <n>` clears a proposal.
 5. `/wrapup`: every item must be operator-confirmed done or deferred (deferred ones in PENDING.md), RESUME rewritten, session work committed.
