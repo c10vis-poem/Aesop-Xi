@@ -14,7 +14,7 @@ Columns:
   - `session` — doing it once per session satisfies it. A skill you preload with `/name` counts.
   - `turn` — it has to be done again on every matching prompt.
 
-Escape hatch: put `#skip-enforce` in a prompt to skip enforcement for that one prompt. It gets logged in the recap.
+Operator override (user-typed only): the operator puts `#skip-enforce` in a prompt to skip enforcement for that one prompt. It gets logged in the recap.
 
 | id | when | require | scope | note |
 |----|------|---------|-------|------|
