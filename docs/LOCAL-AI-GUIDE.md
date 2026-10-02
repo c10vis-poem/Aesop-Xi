@@ -12,6 +12,7 @@
 | `npu-ask "question"` | Answers on the **NPU** and prints the answer in the terminal |
 | `npu-ask -s "question"` | Same, and **speaks** the answer aloud |
 | `npu-ask -m <path> "question"` | Uses a different model (path from `models`) |
+| `npu-serve` | Starts the **NPU server** (GenieX, OpenAI API at `http://127.0.0.1:18181/v1`); `npu-serve status`, `npu-serve stop` |
 | `ai-web` | Starts a **browser chat** at `http://127.0.0.1:8081` and opens it |
 | `ai-web <path>` | Browser chat with a different model |
 | `ai-stop` | Stops the browser chat and frees its memory |
@@ -53,8 +54,17 @@ ai-web /storage/emulated/0/Documents/Models/Qwen3.5-9B-Q4_0.gguf
 ai-stop                # when done (frees the RAM)
 ```
 - It opens `http://127.0.0.1:8081` in your browser: a full chat page with history, built into llama.cpp's server.
-- **Honest note:** this browser chat runs on the **CPU**, not the NPU. Measured: 25 tok/s on the 2B, which is fast enough. Your Android GenieX package only ships the benchmark tool, with no HTTP server, so **NPU-in-the-browser** needs a small "GenieX wrapper" server that isn't built yet (an open item).
-- Other apps can use the same address: it speaks the standard OpenAI API at `http://127.0.0.1:8081/v1/chat/completions`, so OmniRoute, scripts and wiki tools can call it.
+- This browser chat page runs on the **CPU** (llama-server, ~25 tok/s on the 2B). For the **NPU**, use `npu-serve` below.
+
+### NPU server — `npu-serve` (tested 2026-10-02)
+```
+npu-serve                       # Qwen 3.5 2B on the NPU, http://127.0.0.1:18181/v1
+npu-serve <path.gguf> hybrid    # other model / mode
+npu-serve status | stop
+```
+- Serves the model **from GenieX itself**: the Android GenieX package ships the full SDK (`libgeniex.so`), not just the benchmark tool. `~/tools/geniex-serve` is a small C shim plus a Python server over it, loading the model once and keeping it on the HTP.
+- Measured: `Hexagon Arch version v79`, `HTP0 new session`, `offloaded 25/25 layers`; prefill 47.9 tok/s, decode 19.2 tok/s.
+- OpenAI API (`/v1/chat/completions`, streaming or not, `/v1/models`, `/health`), so OmniRoute, scripts and wiki tools can call it. Log: `~/.cache/geniex-serve.log`.
 - The log is in `~/.cache/ai-web.log`.
 
 ---
@@ -63,7 +73,7 @@ ai-stop                # when done (frees the RAM)
 
 | | Qualcomm GenieX Chat app | Your browser URL (`ai-web`) |
 |---|---|---|
-| Runs on | **NPU**, inside an Android app (official path) | CPU today; NPU once the wrapper exists |
+| Runs on | **NPU**, inside an Android app (official path) | `ai-web` page: CPU. `npu-serve` API: **NPU** |
 | Get it | Must be **built** (no ready-made APK is published) | Works now |
 | Models | Picks and downloads models in-app (HF / AI Hub), NPU/GPU/CPU toggle | Any GGUF on the phone |
 | Other tools can call it | No | Yes, OpenAI-style API |
@@ -96,7 +106,8 @@ This is also the starting point for **Hyperion-OXiLm**: the same GenieX Android 
 | Gemma 4 12B QAT Q4_0 | 6.5 GB | close other apps first |
 
 - **Q4_0 runs best on the NPU.** K-quants (`Q4_K_XL`, `q4_k_m`) and `IQ4_NL` get less NPU help.
-- **Qualcomm AI Hub bundles** (`*.zip`, e.g. Qwen3-VL 4B) use GenieX's other runtime (`qairt`). They must be unzipped first, and the shortcuts don't support them yet.
+- **The Qwen 3.5 2B GGUF is an AI Hub model.** AI Hub publishes curated GGUFs for llama.cpp alongside its precompiled bundles (`GenieX/docs/en/models/supported.mdx:10`), and GenieX runs it directly on the NPU through its `llama_cpp` runtime. No other model is needed.
+- AI Hub's precompiled `qairt` bundles (`*.zip`, e.g. the Qwen3-VL 4B on the phone) are a second, optional route, not a requirement.
 
 ---
 
@@ -146,7 +157,8 @@ Each step installs or changes things, so run them in a session with Claude, one 
 ## 8. Open items (as of 2026-10-01)
 
 - **Newer GenieX v0.7.1** (installed at `~/tools/geniex-bench-android-arm64-v0.7.1`) puts the whole model on the NPU and reads prompts faster, but generation drops to ~3 tok/s from Termux. Its "DSP queue" call fails (`0x80000414`). Leading theory: Termux isn't allowed to read `/vendor/dsp/`. The test is to run it through wireless debugging (ADB to the phone itself).
-- **GenieX HTTP wrapper:** a small server so the NPU can serve the browser and other tools.
+- ~~GenieX HTTP wrapper~~ **done 2026-10-02:** `npu-serve` (§3).
+- **Newer GenieX builds:** v0.3.16–v0.3.19 (Jul 20–Aug 7) came out after the installed v0.3.14 and update llama.cpp. Test their speed against v0.3.14.
 - **Qualcomm chat app build** (§4).
 - **The voice items** in §6.
 - **Qwen 3.5 9B on the NPU:** not tested yet.
