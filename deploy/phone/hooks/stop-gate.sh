@@ -3,7 +3,6 @@
 # "NEXT SESSION — START HERE" list has a status (done / blocked), task-observer
 # ran its session-start protocol, and no ENFORCEMENTS requirement is pending.
 # Record item status with: resume-item <n> done|blocked "<evidence or what's needed>"
-# Escape hatch: #skip-enforce in the latest prompt (logged). Fails open on errors.
 in=$(cat); sid=$(jq -r '.session_id // empty' <<<"$in") || exit 0; [ -n "$sid" ] || exit 0
 tp=$(jq -r '.transcript_path // empty' <<<"$in"); cwd=$(jq -r '.cwd // ""' <<<"$in")
 st="$HOME/.claude/state"; log="$st/enforce-$sid.log"; items="$st/resume-items-$sid.tsv"
