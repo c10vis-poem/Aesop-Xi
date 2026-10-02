@@ -177,6 +177,10 @@ re-discover these from scratch:
   plugins listed). Deferred to a future flash session — see `unresolved.md` in
   NovAExorpus.
 
+## Enforcement hooks H1–H7 travel with this repo (2026-10-02)
+
+`.claude/settings.json` registers every phone hook (RESUME/check-in/Stop gates, sync-on-use, ledger, ship-session, secret-guard, ENFORCEMENTS gate, prompt classifier, branch/git gates, context-diff, housekeeping, archive) through `deploy/phone/hooks/run-hook.sh`. A session started in this repo gets them on any device; where `~/.claude/hooks/<name>` already exists (this phone) the launcher exits 0 so nothing fires twice. Sources stay in `deploy/phone/hooks/` — edit there, copy to `~/.claude/hooks/`.
+
 ## Git workflow — PR required, no direct pushes to main
 
 Push changes to a branch, open a PR, let the `CI` GitHub Action run, merge
