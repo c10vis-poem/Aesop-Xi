@@ -25,6 +25,10 @@ Operator override (user-typed only): the operator puts `#skip-enforce` in a prom
 | npu | kw: npu, htp, hexagon, genie, geniex, qnn, qairt, litert, snapdragon, gguf, ggml | read: ~/.claude/NPU-ON-DEVICE.md | session | settled NPU facts; no computer/ADB pushback |
 | wrapup | kw: wrap up, wrap-up, wrapup, close session, end session, session close | read: ~/.claude/WRAP-UP.md | turn | session wrap-up protocol; unlocks git gate |
 | inventory | kw: new hook, new script, new skill, new tool, write a hook, write a script, write a skill, build a tool, create a hook, create a script, create a skill, add a hook, add a script | read: ~/.claude/INVENTORY.md | session | check existing before building |
+| vault | kw: vault, obsidian, wikilink, wikilinks | skill: obsidian-vault | session | vault notes and edits |
+| graphify | kw: graphify, graphify-out, knowledge graph | skill: graphify | session | operator's graphify trigger |
+| voice | kw: voice, vv, tts, stt, whisper, moonshine, kokoro | skill: aesop-voice-pipeline | session | voice pipeline work |
+| bench | kw: benchmark, benchmarks, bench.py | read: /storage/emulated/0/Documents/NovAExorpus/docs/NPU-BENCHMARKS.md | session | keep benchmark results consistent |
 
 ## Per-repo follow guides (added the first time we work in a repo)
 
