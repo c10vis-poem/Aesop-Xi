@@ -1,0 +1,11 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# resume-item <n> done|blocked "<note>" — record a RESUME START HERE item's status for stop-gate.
+# Session id: $CLAUDE_CODE_SESSION_ID, else the newest resume-*.ok in ~/.claude/state.
+st="$HOME/.claude/state"
+[ $# -eq 3 ] && [[ $1 =~ ^[0-9]+$ ]] && [[ $2 =~ ^(done|blocked)$ ]] && [ -n "$3" ] \
+  || { echo 'usage: resume-item <n> done|blocked "<evidence / what is needed>"' >&2; exit 1; }
+sid=${CLAUDE_CODE_SESSION_ID:-$(ls -t "$st"/resume-*.ok 2>/dev/null | head -1 | sed 's|.*/resume-||; s|\.ok$||')}
+[ -n "$sid" ] || { echo "no session found" >&2; exit 1; }
+f="$st/resume-items-$sid.tsv"
+grep -v "^$1	" "$f" 2>/dev/null > "$f.tmp"; printf '%s\t%s\t%s\n' "$1" "$2" "$3" >> "$f.tmp"; mv "$f.tmp" "$f"
+echo "item $1: $2 — $3  (session $sid)"

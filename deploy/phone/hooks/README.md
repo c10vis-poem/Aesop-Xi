@@ -15,5 +15,6 @@ Sources live in `aesop-xi/deploy/phone/hooks/`. Live copies are in `~/.claude/ho
 | `housekeeping-check.sh` | SessionStart | "HOUSEKEEPING DUE" when PENDING.md `last-housekeeping` is 7+ days old or it's the end of the week |
 | `ship-session.sh` | SessionEnd | ships only repos this session touched, only files changed this session: branch → commit (gitleaks) → PR → auto-merge; writes `## Shipped` into the recap |
 | `archive-scratchpad.sh` | SessionEnd / PreCompact | copies the session scratchpad to `~/.claude/scratchpad-archive/` |
+| `stop-gate.sh` (H1 Stop) | Stop | turn can't end until RESUME was read, every RESUME "START HERE" item has a status (`~/bin/resume-item <n> done\|blocked "<note>"`), task-observer loaded + session-start scan written, no ENFORCEMENTS pending. `#skip-enforce` skips (logged). |
 
 Escape hatch for enforcement: `#skip-enforce` in a prompt (logged).
