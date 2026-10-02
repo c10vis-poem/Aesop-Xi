@@ -14,9 +14,12 @@ esac
 curl -s --max-time 2 http://127.0.0.1:$PORT/health >/dev/null && { echo "already running: $(curl -s http://127.0.0.1:$PORT/health)"; exit; }
 MODEL=${1:-$HOME/downloads/Qwen3.5-2B-Q4_0.gguf}; MODE=${2:-npu}
 ln -sf llama_cpp/libggml-htp-v79.so "$G/lib/libggml-htp-v79.so"
-cd "$G" && LD_LIBRARY_PATH=$G/lib:$G/lib/llama_cpp:$G/lib/qairt:/vendor/lib64 GENIEX_PLUGIN_PATH=$G/lib GENIEX_SHIM=$SHIM GGML_HEX_VERBOSE=1 \
-  nohup python3 ~/tools/geniex-serve/server.py --model "$MODEL" --mode "$MODE" --port $PORT > "$LOG" 2>&1 &
-for _ in $(seq 60); do grep -q -E '^ready:|load failed|Traceback' "$LOG" && break; sleep 1; done
+cd "$G" || exit 1
+# Only the server is backgrounded (not a subshell holding this script's stdout open), with stdin detached.
+LD_LIBRARY_PATH=$G/lib:$G/lib/llama_cpp:$G/lib/qairt:/vendor/lib64 GENIEX_PLUGIN_PATH=$G/lib GENIEX_SHIM=$SHIM GGML_HEX_VERBOSE=1 \
+  nohup python3 ~/tools/geniex-serve/server.py --model "$MODEL" --mode "$MODE" --port $PORT > "$LOG" 2>&1 < /dev/null &
+# big models (InternVL 4B/8B) take over a minute to load
+for _ in $(seq 240); do grep -q -E '^ready:|load failed|Traceback' "$LOG" && break; sleep 1; done
 grep -q '^ready:' "$LOG" || { echo "failed — see $LOG"; tail -5 "$LOG"; exit 1; }
 grep -q 'Hexagon Arch version v79' "$LOG" && grep -q 'HTP0 new session' "$LOG" && npu=yes || npu="NO (check $LOG)"
 echo "$(grep '^ready:' "$LOG")  | on NPU: $npu"
