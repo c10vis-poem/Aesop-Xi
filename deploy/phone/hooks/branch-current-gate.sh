@@ -7,7 +7,8 @@ IFS=$'\t' read -r sid tool fp cwd < <(jq -r '[.session_id, .tool_name, (.tool_in
 case $tool in
   Edit|Write) p=${fp%/*} ;;
   Bash) jq -r '.tool_input.command // ""' <<<"$in" | grep -qE '(^|[;&|[:space:]])git[[:space:]]+([^;&|]*[[:space:]])?commit([[:space:]]|$)' || exit 0
-        c=$(jq -r '.tool_input.command' <<<"$in" | sed -nE 's/^[[:space:]]*cd[[:space:]]+([^;&]+)[[:space:]]*(&&|;).*/\1/p' | head -1)
+        # the directory in effect at the commit: last `cd X` before `git commit` (or -C path)
+        c=$(jq -r '.tool_input.command' <<<"$in" | sed -E 's/git[[:space:]]+([^;&|]*[[:space:]])?commit.*//' | grep -oE '(^|[;&|[:space:]])cd[[:space:]]+[^;&|[:space:]]+' | tail -1 | sed -E 's/.*cd[[:space:]]+//')
         p=$(eval echo "${c:-$cwd}" 2>/dev/null) ;;
   *) exit 0 ;;
 esac
