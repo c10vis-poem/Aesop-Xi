@@ -22,7 +22,8 @@ if [ -f "$r" ]; then
     miss+=("Read $r")
   else
     # numbered items under the START HERE heading, up to the next heading
-    for n in $(awk '/^#+ .*START HERE/{f=1;next} f&&/^#/{exit} f&&/^[0-9]+\. /{sub(/\..*/,"");print}' "$r"); do
+    snap="$st/resume-$sid.snap.md"; [ -f "$snap" ] || snap="$r"   # items as they were at session start
+    for n in $(awk '/^#+ .*START HERE/{f=1;next} f&&/^#/{exit} f&&/^[0-9]+\. /{sub(/\..*/,"");print}' "$snap"); do
       grep -q "^$n	" "$items" 2>/dev/null || miss+=("RESUME item $n has no status: run resume-item $n done|blocked \"<evidence / what you need from the operator>\"")
     done
   fi
@@ -33,6 +34,27 @@ if [ -f "$tp" ] && ! jq -e 'select(.type=="assistant") | .message.content[]? | s
   miss+=("Load the task-observer skill and run its Session Start Protocol")
 elif [ -f "$st/resume-$sid.ok" ] && [ ! "$vault/skill-observations/checkpoints.log" -nt "$st/resume-$sid.ok" ]; then
   miss+=("Run the task-observer session-start scan (it appends to skill-observations/checkpoints.log)")
+fi
+
+# Wrap-up mode: RESUME.md must be rewritten this session (content differs from session start)
+# Compare content, not mtime (shared storage doesn't update mtime on rewrite). Baseline = hash
+# recorded by resume-gate at session start, else the last synced version on origin/main.
+base=$(cat "$st/resume-$sid.ok" 2>/dev/null)
+[ -n "$base" ] || base=$(git -C "$vault" show origin/main:RESUME.md 2>/dev/null | sha256sum | cut -d" " -f1)
+if [ -f "$st/wrapup-$sid" ] && [ -f "$st/resume-$sid.ok" ] && [ "$(sha256sum "$vault/RESUME.md" | cut -d" " -f1)" = "$base" ]; then
+  miss+=("Wrap-up: rewrite $vault/RESUME.md from scratch (WRAP-UP.md step 5) — it hasn't changed this session")
+fi
+
+# Wrap-up mode: files this session wrote inside c10vis-poem repos must be committed (vault exempt: GitSync)
+if [ -f "$st/wrapup-$sid" ]; then
+  rec=$(ls -t "$vault"/_recaps/*-"${sid:0:8}".md 2>/dev/null | head -1)
+  [ -n "$rec" ] && awk '/^## Files written/{f=1;next} /^## /{f=0} f&&/^- /{sub(/^- /,"");print}' "$rec" | while read -r fw; do
+    [ -e "$fw" ] || continue
+    t=$(git -C "${fw%/*}" rev-parse --show-toplevel 2>/dev/null) || continue
+    case $t in */NovAExorpus*|*/storage/emulated/*) continue ;; esac
+    [ -n "$(git -C "$t" status --porcelain -- "$fw" 2>/dev/null)" ] && echo "$t"
+  done | sort -u > "$st/uncommitted-$sid.txt"
+  [ -s "$st/uncommitted-$sid.txt" ] && miss+=("Wrap-up: uncommitted session work in: $(paste -sd ' ' "$st/uncommitted-$sid.txt") — commit on a topic branch (WRAP-UP step 1)")
 fi
 
 # ENFORCEMENTS requirements still pending for this prompt

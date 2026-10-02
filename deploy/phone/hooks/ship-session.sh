@@ -44,7 +44,9 @@ echo "=== $(date '+%F %T') session=$sid dry=${dry:-0}"
 
 # "Rewritten" = RESUME.md's top 40 lines carry today's date (WRAP-UP requires a dated rewrite);
 # mtime alone is unreliable (GitSync conflict handling touches the file).
-if [ -n "$since" ] && [ "$VAULT/RESUME.md" -nt "$marker" ] && head -40 "$VAULT/RESUME.md" 2>/dev/null | grep -q "$(date +%F)"; then resume=rewritten; flag=ok
+# Content check (mtime is unreliable on shared storage): differs from the hash resume-gate stored at session start.
+base=$(cat "$STATE_DIR/resume-$sid.ok" 2>/dev/null)
+if [ -n "$base" ] && [ "$(sha256sum "$VAULT/RESUME.md" | cut -d' ' -f1)" != "$base" ] && head -40 "$VAULT/RESUME.md" 2>/dev/null | grep -q "$(date +%F)"; then resume=rewritten; flag=ok
 else resume="NOT REWRITTEN"; flag="missing ${sid:0:8} $date"; fi
 [ -z "$dry" ] && { mkdir -p "$STATE_DIR"; echo "$flag" > "$STATE_DIR/last-session-resume.flag"; }
 
@@ -89,6 +91,9 @@ ship_branch() { # $1 = local branch, in $top
         --body "Session $sid work on \`$br\`, shipped by ship-session.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)" 2>/dev/null | tail -1)
+  if grep -Fxq -- "$br" "$STATE_DIR/keep-$sid.txt" 2>/dev/null; then   # operator said #keep-branch
+    git push -q origin "$br:refs/heads/saved/$br" 2>/dev/null && lines+=("- $top: kept copy saved/$br (operator #keep-branch)")
+  fi
   [ -n "$pr" ] && gh pr merge "$pr" --auto --squash --delete-branch >/dev/null 2>&1 && am=on
   B_top+=("$top") B_br+=("$br") B_pr+=("${pr:-none}") B_am+=("$am") B_mg+=("$([ -n "$pr" ] && echo pending || echo no-PR)")
 }
