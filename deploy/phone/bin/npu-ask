@@ -3,7 +3,7 @@
 #   npu-ask "your question"            answer printed
 #   npu-ask -s "your question"         answer printed AND spoken aloud
 #   npu-ask -m <model.gguf> "question" use a different GGUF (see: models)
-#   NPU_DEVICE=npu npu-ask "..."       pure NPU (default: hybrid = NPU+CPU, fastest)
+#   NPU_DEVICE=hybrid npu-ask "..."    HTP+CPU split (default: npu = 100% NPU, GenieX's own default)
 #   NPU_TOKENS=400 npu-ask "..."       longer answers (default 300)
 set -e
 B="${GENIEX_HOME:-$HOME/tools/geniex-bench}"
@@ -30,7 +30,7 @@ case $fmt in
 esac
 cd "$B"
 out=$(LD_LIBRARY_PATH=lib:lib/llama_cpp:/vendor/lib64 GENIEX_PLUGIN_PATH=lib \
-  bin/geniex-bench --plugin llama_cpp --device "${NPU_DEVICE:-hybrid}" -m "$M" \
+  bin/geniex-bench --plugin llama_cpp --device "${NPU_DEVICE:-npu}" -m "$M" \
   --prompt-file "$p" -n "${NPU_TOKENS:-300}" --accuracy 2>/dev/null)
 ans=$(printf '%s\n' "$out" | sed -n 's/^\[gen \] \{0,1\}//p' | sed "s/<|im_end|>.*//; s/<end_of_turn>.*//")
 stat=$(printf '%s\n' "$out" | grep -a -o 'decode=[0-9.]*tps' | head -1)

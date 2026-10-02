@@ -2,6 +2,8 @@
 
 *Written 2026-10-01. Every command below was tested on this phone unless marked **not tested**. Device: Snapdragon 8 Elite (HTP v79).*
 
+*Build history, how the NPU server works, and how to upgrade GenieX: [NPU-SERVE-BUILD-LOG.md](NPU-SERVE-BUILD-LOG.md).*
+
 ---
 
 ## 1. Shortcut commands (type these in Termux)
@@ -12,6 +14,7 @@
 | `npu-ask "question"` | Answers on the **NPU** and prints the answer in the terminal |
 | `npu-ask -s "question"` | Same, and **speaks** the answer aloud |
 | `npu-ask -m <path> "question"` | Uses a different model (path from `models`) |
+| `npu-serve` | Starts the **NPU server** (GenieX, OpenAI API at `http://127.0.0.1:18181/v1`); `npu-serve status`, `npu-serve stop` |
 | `ai-web` | Starts a **browser chat** at `http://127.0.0.1:8081` and opens it |
 | `ai-web <path>` | Browser chat with a different model |
 | `ai-stop` | Stops the browser chat and frees its memory |
@@ -36,7 +39,7 @@ npu-ask "Explain what an NPU is in two sentences."
 **Options**
 - `-s`: also speak the answer.
 - `NPU_TOKENS=600 npu-ask "..."`: longer answers (default 300 tokens).
-- `NPU_DEVICE=npu npu-ask "..."`: pure NPU. The default is `hybrid` (NPU + CPU per operation), Qualcomm's "fast path".
+- The default is **`npu`**: 100% on the NPU (`HTP0`, all layers), GenieX's own default. `NPU_DEVICE=hybrid npu-ask "..."` splits work between the NPU and the CPU.
 - Pipe text in: `cat notes.md | npu-ask -m <model>`.
 
 **How each call works:** it loads the model, answers once, then exits, so each question has a few seconds of load time. It's a one-shot asker, not a chat with memory. For back-and-forth chat, use `ai-web` (§3).
@@ -53,8 +56,19 @@ ai-web /storage/emulated/0/Documents/Models/Qwen3.5-9B-Q4_0.gguf
 ai-stop                # when done (frees the RAM)
 ```
 - It opens `http://127.0.0.1:8081` in your browser: a full chat page with history, built into llama.cpp's server.
-- **Honest note:** this browser chat runs on the **CPU**, not the NPU. Measured: 25 tok/s on the 2B, which is fast enough. Your Android GenieX package only ships the benchmark tool, with no HTTP server, so **NPU-in-the-browser** needs a small "GenieX wrapper" server that isn't built yet (an open item).
-- Other apps can use the same address: it speaks the standard OpenAI API at `http://127.0.0.1:8081/v1/chat/completions`, so OmniRoute, scripts and wiki tools can call it.
+- This browser chat page runs on the **CPU** (llama-server, ~25 tok/s on the 2B). For the **NPU**, use `npu-serve` below.
+
+### NPU server — `npu-serve` (tested 2026-10-02)
+```
+npu-serve                       # Qwen 3.5 2B on the NPU, http://127.0.0.1:18181/v1
+npu-serve <path.gguf> hybrid    # other model / mode
+npu-serve status | stop
+```
+- Serves the model **from GenieX itself**: the Android GenieX package ships the full SDK (`libgeniex.so`), not just the benchmark tool. `~/tools/geniex-serve` is a small C shim plus a Python server over it, loading the model once and keeping it on the HTP.
+- Runs **GenieX v0.7.1**, the current release (`GENIEX=v0.3.14 npu-serve` for the old one), in burst power mode.
+- Measured on v0.7.1: `Hexagon Arch version v79`, `HTP0 new session`, decode 12–17 tok/s.
+- **Proof test (2026-10-02): not 100% NPU, and slower than the CPU on Qwen 3.5 2B.** Same request: NPU mode decode 12.7 tok/s, CPU mode 34.1 tok/s. About 400 MB of the model stays on the CPU, so every token goes back and forth. Under investigation; see the build log.
+- OpenAI API (`/v1/chat/completions`, streaming or not, `/v1/models`, `/health`), so OmniRoute, scripts and wiki tools can call it. Log: `~/.cache/geniex-serve.log`.
 - The log is in `~/.cache/ai-web.log`.
 
 ---
@@ -63,7 +77,7 @@ ai-stop                # when done (frees the RAM)
 
 | | Qualcomm GenieX Chat app | Your browser URL (`ai-web`) |
 |---|---|---|
-| Runs on | **NPU**, inside an Android app (official path) | CPU today; NPU once the wrapper exists |
+| Runs on | **NPU**, inside an Android app (official path) | `ai-web` page: CPU. `npu-serve` API: **NPU** |
 | Get it | Must be **built** (no ready-made APK is published) | Works now |
 | Models | Picks and downloads models in-app (HF / AI Hub), NPU/GPU/CPU toggle | Any GGUF on the phone |
 | Other tools can call it | No | Yes, OpenAI-style API |
@@ -96,7 +110,8 @@ This is also the starting point for **Hyperion-OXiLm**: the same GenieX Android 
 | Gemma 4 12B QAT Q4_0 | 6.5 GB | close other apps first |
 
 - **Q4_0 runs best on the NPU.** K-quants (`Q4_K_XL`, `q4_k_m`) and `IQ4_NL` get less NPU help.
-- **Qualcomm AI Hub bundles** (`*.zip`, e.g. Qwen3-VL 4B) use GenieX's other runtime (`qairt`). They must be unzipped first, and the shortcuts don't support them yet.
+- **The Qwen 3.5 2B GGUF is an AI Hub model.** AI Hub publishes curated GGUFs for llama.cpp alongside its precompiled bundles (`GenieX/docs/en/models/supported.mdx:10`), and GenieX runs it directly on the NPU through its `llama_cpp` runtime. No other model is needed.
+- AI Hub's precompiled `qairt` bundles (`*.zip`, e.g. the Qwen3-VL 4B on the phone) are a second, optional route, not a requirement.
 
 ---
 
@@ -145,8 +160,9 @@ Each step installs or changes things, so run them in a session with Claude, one 
 
 ## 8. Open items (as of 2026-10-01)
 
-- **Newer GenieX v0.7.1** (installed at `~/tools/geniex-bench-android-arm64-v0.7.1`) puts the whole model on the NPU and reads prompts faster, but generation drops to ~3 tok/s from Termux. Its "DSP queue" call fails (`0x80000414`). Leading theory: Termux isn't allowed to read `/vendor/dsp/`. The test is to run it through wireless debugging (ADB to the phone itself).
-- **GenieX HTTP wrapper:** a small server so the NPU can serve the browser and other tools.
+- **GenieX v0.7.1** runs at normal speed through `npu-serve` (decode ~17 tok/s), and `geniex-bench` v0.7.1 now gives decode 15.9 tok/s. The earlier ~3 tok/s didn't reproduce (cause unknown). `npu-ask` still uses the v0.3.14 bench tool.
+- ~~GenieX HTTP wrapper~~ **done 2026-10-02:** `npu-serve` (§3).
+- **Speed gap:** ~17–19 tok/s vs Qualcomm's ~45–50 for a 2B Q4_0. Next: compare decode with other apps closed, and test the ADB-shell user.
 - **Qualcomm chat app build** (§4).
 - **The voice items** in §6.
 - **Qwen 3.5 9B on the NPU:** not tested yet.

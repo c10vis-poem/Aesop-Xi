@@ -1,0 +1,22 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# npu-serve [model.gguf] [npu|hybrid]   start the GenieX NPU server (OpenAI API, port 18181)
+# npu-serve stop | status
+# Server: ~/tools/geniex-serve (libgeniex.so via a C shim, one per GenieX version). Log: ~/.cache/geniex-serve.log
+# GENIEX=v0.7.1 (default, current release) or GENIEX=v0.3.14
+if [ "${GENIEX:-v0.7.1}" = v0.3.14 ]; then G=~/tools/geniex-bench; SHIM=~/tools/geniex-serve/libgeniex_shim.so
+else G=~/tools/geniex-bench-android-arm64-v0.7.1; SHIM=~/tools/geniex-serve/libgeniex_shim-v0.7.1.so; fi
+LOG=~/.cache/geniex-serve.log; PORT=18181
+case "${1:-}" in
+  stop)   pkill -f 'geniex-serve/server.py' && echo stopped || echo "not running"; exit ;;
+  status) curl -s --max-time 3 http://127.0.0.1:$PORT/health || echo "not running"; echo; exit ;;
+  -h|--help) sed -n 2,4p "$0"; exit ;;
+esac
+curl -s --max-time 2 http://127.0.0.1:$PORT/health >/dev/null && { echo "already running: $(curl -s http://127.0.0.1:$PORT/health)"; exit; }
+MODEL=${1:-$HOME/downloads/Qwen3.5-2B-Q4_0.gguf}; MODE=${2:-npu}
+ln -sf llama_cpp/libggml-htp-v79.so "$G/lib/libggml-htp-v79.so"
+cd "$G" && LD_LIBRARY_PATH=$G/lib:$G/lib/llama_cpp:$G/lib/qairt:/vendor/lib64 GENIEX_PLUGIN_PATH=$G/lib GENIEX_SHIM=$SHIM GGML_HEX_VERBOSE=1 \
+  nohup python3 ~/tools/geniex-serve/server.py --model "$MODEL" --mode "$MODE" --port $PORT > "$LOG" 2>&1 &
+for _ in $(seq 60); do grep -q -E '^ready:|load failed|Traceback' "$LOG" && break; sleep 1; done
+grep -q '^ready:' "$LOG" || { echo "failed — see $LOG"; tail -5 "$LOG"; exit 1; }
+grep -q 'Hexagon Arch version v79' "$LOG" && grep -q 'HTP0 new session' "$LOG" && npu=yes || npu="NO (check $LOG)"
+echo "$(grep '^ready:' "$LOG")  | on NPU: $npu"
