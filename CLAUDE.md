@@ -181,6 +181,24 @@ re-discover these from scratch:
 
 `.claude/settings.json` registers every phone hook (RESUME/check-in/Stop gates, sync-on-use, ledger, ship-session, secret-guard, ENFORCEMENTS gate, prompt classifier, branch/git gates, context-diff, housekeeping, archive) through `deploy/phone/hooks/run-hook.sh`. A session started in this repo gets them on any device; where `~/.claude/hooks/<name>` already exists (this phone) the launcher exits 0 so nothing fires twice. Sources stay in `deploy/phone/hooks/` — edit there, copy to `~/.claude/hooks/`.
 
+## Subagents — standing order (operator, 2026-10-01; updated 2026-10-04)
+This is the explicit ask the Agent tool requires; don't wait to be told.
+- A request with independent parts → spawn subagents for them in parallel; do the
+  remaining parts myself meanwhile; never sit idle waiting.
+- Size the model per task: haiku = mundane lookup/grep/listing; sonnet = normal
+  research, audits, routine code; opus/fable = hard reasoning, architecture, debugging.
+- Single, simple, sequential tasks stay inline — no spawn.
+- **Every subagent keeps a live progress file**, and the spawn prompt must say so:
+  `~/.claude/session-work/<date>/agent-<topic>.md`, written FIRST (before any work)
+  and updated after every step, with:
+  - `## Plan` — every step as a checkbox, `[x]` done / `[ ]` pending
+  - `## Last action` — timestamp + what it just did / is doing now
+  - `## Findings` — results so far (so nothing is lost if it's stopped)
+  - `## Blocked` — anything it's stuck on
+- When the operator asks where a subagent is, read its progress file and answer —
+  never wait for it to finish. A stale `Last action` timestamp = likely hung: say so
+  and offer to stop it; its findings survive in the file.
+
 ## Git workflow — PR required, no direct pushes to main
 
 Push changes to a branch, open a PR, let the `CI` GitHub Action run, merge
