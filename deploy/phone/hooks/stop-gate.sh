@@ -71,6 +71,34 @@ if [ -f "$st/wrapup-$sid" ]; then
   [ -s "$st/uncommitted-$sid.txt" ] && miss+=("Wrap-up: uncommitted session work in: $(paste -sd ' ' "$st/uncommitted-$sid.txt") — commit on a topic branch (WRAP-UP step 1)")
 fi
 
+# Wrap-up mode: per-repo docs (WRAP-UP step 4/4b) for every repo this session wrote in, vault included.
+# MEMORY.md must exist and differ from origin's default branch; AGENTS.md must exist and CLAUDE.md must
+# not (operator 2026-10-05: AGENTS.md is the only repo instruction file; upstream forks are exempt);
+# the vault PENDING.md must differ from origin/main.
+if [ -f "$st/wrapup-$sid" ]; then
+  base_repos=" NovAExorpus aesop-xi novus-aexenti NovAExopia Hyperion-XI novus-aesc novus-aeyre wiki-admin "
+  changed() {  # $1 repo top, $2 file: true if the file on disk differs from origin's default branch.
+    # Content compare, not git status: the vault's index is stale (GitSync syncs through the API).
+    local d; d=$(git -C "$1" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || echo origin/main)
+    git -C "$1" rev-parse -q --verify "$d" >/dev/null 2>&1 || return 0   # no remote yet: existence is enough
+    ! git -C "$1" show "$d:$2" 2>/dev/null | cmp -s - "$1/$2"
+  }
+  rec=$(ls -t "$vault"/_recaps/*-"${sid:0:8}".md 2>/dev/null | head -1)
+  tops=$( { [ -n "$rec" ] && awk '/^## Files written/{f=1;next} /^## /{f=0} f&&/^- /{sub(/^- /,"");print}' "$rec"; } | while read -r fw; do
+    case $fw in */storage/*/Documents/NovAExorpus/*|*/storage/shared/Documents/NovAExorpus/*) echo "$vault"; continue ;; esac
+    [ -e "$fw" ] && git -C "${fw%/*}" rev-parse --show-toplevel 2>/dev/null
+  done | sort -u)
+  for t in $tops; do
+    name=$(basename "$(git -C "$t" config --get remote.origin.url 2>/dev/null | sed 's/\.git$//')" 2>/dev/null); [ -n "$name" ] || name=$(basename "$t")
+    case $base_repos in *" $name "*) ;; *) continue ;; esac
+    [ -f "$t/MEMORY.md" ] || { miss+=("Wrap-up: $name has no MEMORY.md — create it (WRAP-UP step 4b)"); continue; }
+    changed "$t" MEMORY.md || miss+=("Wrap-up: update $name/MEMORY.md with what this session learned (WRAP-UP step 4b)")
+    [ -f "$t/AGENTS.md" ] || miss+=("Wrap-up: $name has no AGENTS.md (the only repo instruction file)")
+    [ -n "$(git -C "$t" ls-files CLAUDE.md .claude/CLAUDE.md 2>/dev/null)" ] && miss+=("Wrap-up: $name still tracks a CLAUDE.md — move its content into AGENTS.md and delete it")
+  done
+  changed "$vault" PENDING.md || miss+=("Wrap-up: move every unaddressed item into the vault PENDING.md (WRAP-UP step 4) — it hasn't changed this session")
+fi
+
 # ENFORCEMENTS requirements still pending for this prompt
 [ -s "$st/required-$sid.tsv" ] && miss+=("Pending ENFORCEMENTS: $(cut -f2 "$st/required-$sid.tsv" | paste -sd ';')")
 
