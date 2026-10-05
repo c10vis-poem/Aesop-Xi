@@ -7,7 +7,7 @@ Triggered ONLY by the `/wrapup` command (`~/.claude/commands/wrapup.md`); mentio
 3. **Memory:** save new durable facts and feedback, and update or delete stale notes. Write a handoff note only from files actually read (list what was read and what wasn't).
 4. **PENDING.md** (vault): add new open items, remove finished ones. Update `last-housekeeping:` if housekeeping was done.
 4b. **Per-repo docs, for EVERY repo touched this session** — done here at wrap-up, not scattered through the session:
-   - `CLAUDE.md`: update it if this session changed the repo's rules, workflow, layout or conventions.
+   - `AGENTS.md`: update it if this session changed the repo's rules, workflow, layout or conventions.
    - `MEMORY.md`: **every repo gets one.** Create it if missing (durable facts about the repo: what it is, decisions, gotchas, current state, dated). Add anything new learned this session.
    - `PENDING.md`: add this repo's new open items, remove finished ones.
    - Commit these onto the session branch with the rest of the repo's work, so they ship together.

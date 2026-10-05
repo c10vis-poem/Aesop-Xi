@@ -5,7 +5,7 @@
 # tools/bootstrap.sh is a thin wrapper that calls this first, then does
 # repo-specific post-boot. Idempotent, fast on hot start, loud on failure.
 #
-# Triggers: CLAUDE.md instruction on session start, git post-checkout hook,
+# Triggers: AGENTS.md instruction on session start, git post-checkout hook,
 # or manual `bash tools/bootstrap.sh`.
 
 set -euo pipefail
