@@ -77,11 +77,17 @@ fi
 # the vault PENDING.md must differ from origin/main.
 if [ -f "$st/wrapup-$sid" ]; then
   base_repos=" NovAExorpus aesop-xi novus-aexenti NovAExopia Hyperion-XI novus-aesc novus-aeyre wiki-admin "
-  changed() {  # $1 repo top, $2 file: true if the file on disk differs from origin's default branch.
-    # Content compare, not git status: the vault's index is stale (GitSync syncs through the API).
-    local d; d=$(git -C "$1" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || echo origin/main)
+  start=$(stat -c %Y "$st/resume-$sid.ok" 2>/dev/null || echo 0)   # session start (RESUME read)
+  changed() {  # $1 repo top, $2 file: changed this session = differs on disk from origin's default branch
+    # (content compare: the vault's index is stale under GitSync), or already shipped: its last commit
+    # there (or on HEAD) is newer than the session start.
+    local d t; d=$(git -C "$1" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || echo origin/main)
     git -C "$1" rev-parse -q --verify "$d" >/dev/null 2>&1 || return 0   # no remote yet: existence is enough
-    ! git -C "$1" show "$d:$2" 2>/dev/null | cmp -s - "$1/$2"
+    git -C "$1" show "$d:$2" 2>/dev/null | cmp -s - "$1/$2" || return 0
+    for t in $(git -C "$1" log -1 --format=%ct "$d" -- "$2" 2>/dev/null) $(git -C "$1" log -1 --format=%ct HEAD -- "$2" 2>/dev/null); do
+      [ "$t" -ge "$start" ] && return 0
+    done
+    return 1
   }
   rec=$(ls -t "$vault"/_recaps/*-"${sid:0:8}".md 2>/dev/null | head -1)
   tops=$( { [ -n "$rec" ] && awk '/^## Files written/{f=1;next} /^## /{f=0} f&&/^- /{sub(/^- /,"");print}' "$rec"; } | while read -r fw; do
