@@ -109,6 +109,12 @@ fi
 [ -s "$st/required-$sid.tsv" ] && miss+=("Pending ENFORCEMENTS: $(cut -f2 "$st/required-$sid.tsv" | paste -sd ';')")
 
 [ ${#miss[@]} -eq 0 ] && exit 0
+# Items only the operator can close (/ok, /defer) block once, then let the turn end so the operator can
+# type them: re-blocking on stop_hook_active would loop forever with no way for them to answer.
+if [ "$(jq -r '.stop_hook_active // false' <<<"$in")" = true ]; then
+  ops=0; for m in "${miss[@]}"; do case $m in *"needs the operator's /ok"*) ops=$((ops+1)) ;; esac; done
+  [ "$ops" -eq ${#miss[@]} ] && { echo "$(date +%T) STOP-YIELD awaiting operator /ok|/defer" >> "$log"; exit 0; }
+fi
 reason="BLOCKED (stop-gate): not done yet —"; for m in "${miss[@]}"; do reason+=$'\n'"- $m"; done
 echo "$(date +%T) STOP-BLOCK ${#miss[@]} item(s)" >> "$log"
 jq -n --arg r "$reason" '{decision:"block", reason:$r}'
