@@ -99,7 +99,7 @@ For lines near the boundaries of a source document — where icon-font glyphs or
 
 ### furniture_class(line)
 
-Classifies a line the checker found in the source that is absent from the clean file. Re-derives the furniture strip policy from `README.md` and `CLAUDE.md` independently, then checks whether the line matches any furniture rule. If it does, the absence is expected — not a finding. If it doesn't match any furniture rule, it's a content loss.
+Classifies a line the checker found in the source that is absent from the clean file. Re-derives the furniture strip policy from `README.md` and `AGENTS.md` independently, then checks whether the line matches any furniture rule. If it does, the absence is expected — not a finding. If it doesn't match any furniture rule, it's a content loss.
 
 ---
 
@@ -203,7 +203,7 @@ These are the parameters that should be configurable per-corpus invocation. Curr
 | `CLEAN` | `02-clean` | Clean directory |
 | `OUT` | `03-check` | Output directory |
 | `FORMATS` | `{pdf, docx, html, txt, md, zip}` | Which formats to process |
-| `FURNITURE_POLICY` | Derived from README + CLAUDE.md at runtime | Strip rules — re-derived independently, not imported from clean.py |
+| `FURNITURE_POLICY` | Derived from README + AGENTS.md at runtime | Strip rules — re-derived independently, not imported from clean.py |
 | `ATOM_TYPES` | URL, path, measurement, version, identifier, date | Classes of values extracted by find_atoms |
 | `ADJACENCY_GUARD` | On | Whether to exclude atoms the checker itself fused to neighbors |
 | `EDGE_LINES` | 10 | Lines at document start/end to use edge_check instead of exact-string |
@@ -247,7 +247,7 @@ Investigate immediately. Do not treat an ERROR as a pass. Read the stack trace i
 This skill is not specific to the NovAExorpus corpus. To apply it to another repo or corpus:
 
 1. Set `SRC`, `CLEAN`, `OUT` to the appropriate directories (make them configurable — see Config layer).
-2. Confirm the furniture strip policy is documented in that repo's README or CLAUDE.md — `furniture_class` re-derives it from there.
+2. Confirm the furniture strip policy is documented in that repo's README or AGENTS.md — `furniture_class` re-derives it from there.
 3. Confirm `tools/check.py` is present or copied in (it imports nothing from `tools/clean.py` and has no repo-specific logic).
 4. Run. The FINDINGS.jsonl schema is identical across all corpora.
 

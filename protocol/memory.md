@@ -8,7 +8,7 @@ that had no named memory role until now). This file does not duplicate that tabl
 edit it there, not here.
 
 This file is separate from, and should not be confused with, the *dev-process*
-handoff system for building Æsop-Xi: `../CLAUDE.md` (standing conventions),
+handoff system for building Æsop-Xi: `../AGENTS.md` (standing conventions),
 `../RESUME.md` (session snapshot, full rewrite each session), and
 `../unresolved.md` (durable backlog). Those govern how a Claude Code session
 maintains continuity while building Æsop-Xi. This file governs how the Æsop-Xi agent
