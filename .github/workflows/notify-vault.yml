@@ -1,0 +1,19 @@
+name: Notify vault
+# When this repo's AGENTS.md or RESUME.md changes on main, ask NovAExorpus to
+# rebuild MASTER-AGENTS.md / MASTER-RESUME.md (its master-files workflow).
+on:
+  push:
+    branches: [main]
+    paths: [AGENTS.md, RESUME.md]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch to NovAExorpus
+        env:
+          GH_TOKEN: ${{ secrets.VAULT_DISPATCH_TOKEN }}
+        run: |
+          gh api repos/c10vis-poem/NovAExorpus/dispatches \
+            -f event_type=base-repo-updated \
+            -f "client_payload[repo]=${{ github.repository }}"
