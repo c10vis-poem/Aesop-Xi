@@ -26,21 +26,21 @@ every session, no exceptions. (Complements the session-handoff workflow below.)
   version had grown to 300 lines across many sessions and contained literal
   unresolved git conflict markers from a stash that was never cleanly finished —
   that's what happens when this rule isn't followed.)
-- **Anything flagged during a session but not addressed goes into `unresolved.md`**
-  at repo root, not into RESUME.md. `unresolved.md` is a durable, cross-session
+- **Anything flagged during a session but not addressed goes into `PENDING.md`**
+  at repo root, not into RESUME.md. `PENDING.md` is a durable, cross-session
   backlog — items persist until resolved or explicitly dropped, and it is NOT
   rewritten each session the way RESUME.md is.
-- **Review open `unresolved.md` items with the user early in a session** that
+- **Review open `PENDING.md` items with the user early in a session** that
   touches this repo, rather than silently carrying them forward or silently
   dropping them.
-- `RESUME.md` may point to specific `unresolved.md` items when they're relevant to
-  the immediate next session; `unresolved.md` remains the permanent home for
+- `RESUME.md` may point to specific `PENDING.md` items when they're relevant to
+  the immediate next session; `PENDING.md` remains the permanent home for
   everything else.
 
 ## Memory — three separate systems, don't conflate them
 
 - **Dev-process continuity building Æsop-Xi**: this file + `RESUME.md` +
-  `unresolved.md`. Operational, about the build process.
+  `PENDING.md`. Operational, about the build process.
 - **The finished Æsop-Xi agent's own runtime memory model**: `ARCHITECTURE.md`
   §4 (Declarative / Recall / Strategic / Working-Ephemeral) and
   `protocol/memory.md`. Product architecture spec.
@@ -174,12 +174,12 @@ re-discover these from scratch:
 - **ECC** (`~/repos/ECC-aesop`) — a real, ready-to-go Claude Code plugin
   (`.claude-plugin/plugin.json`) never actually installed via the plugin system.
   Confirmed against `~/.claude/plugins/installed_plugins.json` (only 3 unrelated
-  plugins listed). Deferred to a future flash session — see `unresolved.md` in
+  plugins listed). Deferred to a future flash session — see `PENDING.md` in
   NovAExorpus.
 
 ## Enforcement hooks H1–H7 travel with this repo (2026-10-02)
 
-`.claude/settings.json` registers every phone hook (RESUME/check-in/Stop gates, sync-on-use, ledger, ship-session, secret-guard, ENFORCEMENTS gate, prompt classifier, branch/git gates, context-diff, housekeeping, archive) through `deploy/phone/hooks/run-hook.sh`. A session started in this repo gets them on any device; where `~/.claude/hooks/<name>` already exists (this phone) the launcher exits 0 so nothing fires twice. Sources stay in `deploy/phone/hooks/` — edit there, copy to `~/.claude/hooks/`.
+`.claude/settings.json` registers every phone hook (RESUME/check-in/Stop gates, sync-on-use, ledger, ship-session, secret-guard, ENFORCEMENTS gate, prompt classifier, branch/git gates, context-diff, housekeeping, archive) through `hooks/run-hook.sh`. A session started in this repo gets them on any device; where `~/.claude/hooks/<name>` already exists (this phone) the launcher exits 0 so nothing fires twice. Sources stay in `hooks/` — edit there, copy to `~/.claude/hooks/`.
 
 ## Subagents — standing order (operator, 2026-10-01; updated 2026-10-04)
 This is the explicit ask the Agent tool requires; don't wait to be told.
@@ -260,4 +260,4 @@ of this rule, not a valid alternative to it. Don't let work sit stranded.
 
 This file only loads automatically when a session's working directory is inside
 this repo. A session started elsewhere (e.g. `~/downloads`) will not see it or
-`RESUME.md`/`unresolved.md` unless it's explicitly pointed here.
+`RESUME.md`/`PENDING.md` unless it's explicitly pointed here.

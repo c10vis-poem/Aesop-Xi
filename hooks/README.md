@@ -1,6 +1,6 @@
 # Phone hooks
 
-Sources live in `aesop-xi/deploy/phone/hooks/`. Live copies are in `~/.claude/hooks/` and `~/.config/git/hooks/`. Rules registry: `~/.claude/ENFORCEMENTS.md`.
+Sources live in `aesop-xi/hooks/`. Live copies are in `~/.claude/hooks/` and `~/.config/git/hooks/`. Rules registry: `~/.claude/ENFORCEMENTS.md`.
 
 | File | Event | What it does |
 |---|---|---|
@@ -10,7 +10,7 @@ Sources live in `aesop-xi/deploy/phone/hooks/`. Live copies are in `~/.claude/ho
 | `resume-gate.sh` | PreToolUse `*` | no tool runs until RESUME.md (the repo's, else the vault's) has been read |
 | `enforce-gate.sh` | PreToolUse `*` | no tool runs until this prompt's ENFORCEMENTS requirements are met |
 | `branch-current-gate.sh` | PreToolUse `Bash\|Edit\|Write` | no edits or `git commit` in a c10vis-poem repo whose branch doesn't contain the latest `origin/<default>` (fetches once per repo per session). Fix: start a worktree from current main. Vault exempt (GitSync) |
-| `sync-on-use.sh` | PreToolUse `Bash\|Edit\|Write\|Read` | first use of a `~/repos/<fork>` in a session: background `gh repo sync` + ff-pull if clean |
+| `sync-on-use.sh` | PreToolUse `Bash\|Edit\|Write\|Read` | BLOCKING: the first touch of a `~/repos/<fork>` (path, cwd, or a path in a Bash command; worktrees count as their repo) waits for `gh repo sync` + fetch + ff of the default branch; a failed sync blocks the call |
 | `session-ledger.sh` | PostToolUse `Edit\|Write\|Bash` | logs repos touched, files written and git actions to the vault `_recaps/<date>-<sid>.md` (git-ignored) |
 | `enforce-prompt.sh` + `classify.sh` | UserPromptSubmit | works out the required skill / read / script per prompt (keyword rows, or `CLASSIFY_URL` backend) |
 | `context-diff.sh` | SessionStart | shows CLAUDE.md / MEMORY.md lines changed since the last session |

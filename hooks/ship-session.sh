@@ -42,6 +42,13 @@ section() { awk -v s="## $1" '/^## /{on=($0==s);next} on && /^- /{print substr($
 vault_top=$(git -C "$VAULT" rev-parse --show-toplevel 2>/dev/null)
 echo "=== $(date '+%F %T') session=$sid dry=${dry:-0}"
 
+# Nothing ships until the operator has approved the change review ("#ok push"; review-changes.sh).
+if [ -s "$STATE_DIR/changes-$sid.log" ] && [ ! -f "$STATE_DIR/pushok-$sid" ]; then
+  echo "held: change review not approved"
+  [ -z "$dry" ] && printf '\n## Shipped\n\n- NOT SHIPPED: the operator has not approved the change review (#ok push). Run hooks/review-changes.sh %s, then ship with: ship-session.sh --now %s\n' "$sid" "$sid" >> "$ledger"
+  exit 0
+fi
+
 # "Rewritten" = RESUME.md's top 40 lines carry today's date (WRAP-UP requires a dated rewrite);
 # mtime alone is unreliable (GitSync conflict handling touches the file).
 # Content check (mtime is unreliable on shared storage): differs from the hash resume-gate stored at session start.
@@ -94,7 +101,17 @@ ship_branch() { # $1 = local branch, in $top
   if grep -Fxq -- "$br" "$STATE_DIR/keep-$sid.txt" 2>/dev/null; then   # operator said #keep-branch
     git push -q origin "$br:refs/heads/saved/$br" 2>/dev/null && lines+=("- $top: kept copy saved/$br (operator #keep-branch)")
   fi
-  [ -n "$pr" ] && gh pr merge "$pr" --auto --squash --delete-branch >/dev/null 2>&1 && am=on
+  # No auto-merge without CI and required checks: on such a branch "auto" means "merge now, unchecked".
+  why=$(bash "$(dirname "$0")/ci-ready.sh" "$slug" "$def"); rc=$?
+  if [ -n "$pr" ] && [ $rc -eq 3 ]; then   # private + free plan: wait for green CI, then merge
+    if timeout "$POLL_MAX" gh pr checks "$pr" --watch --fail-fast >/dev/null 2>&1 \
+       && gh pr merge "$pr" --squash --delete-branch >/dev/null 2>&1; then am="merged after green CI (private repo)"
+    else am="refused (CI not green; private repo, merge by hand)"; fi
+  elif [ -n "$pr" ] && [ $rc -ne 0 ]; then
+    am="refused ($why)"
+  else
+    [ -n "$pr" ] && gh pr merge "$pr" --auto --squash --delete-branch >/dev/null 2>&1 && am=on
+  fi
   B_top+=("$top") B_br+=("$br") B_pr+=("${pr:-none}") B_am+=("$am") B_mg+=("$([ -n "$pr" ] && echo pending || echo no-PR)")
 }
 

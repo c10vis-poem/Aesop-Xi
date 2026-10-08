@@ -98,11 +98,47 @@ if [ -f "$st/wrapup-$sid" ]; then
     name=$(basename "$(git -C "$t" config --get remote.origin.url 2>/dev/null | sed 's/\.git$//')" 2>/dev/null); [ -n "$name" ] || name=$(basename "$t")
     case $base_repos in *" $name "*) ;; *) continue ;; esac
     [ -f "$t/MEMORY.md" ] || { miss+=("Wrap-up: $name has no MEMORY.md — create it (WRAP-UP step 4b)"); continue; }
-    changed "$t" MEMORY.md || miss+=("Wrap-up: update $name/MEMORY.md with what this session learned (WRAP-UP step 4b)")
+    # a repo with several worktrees counts as updated if any of its worktrees changed MEMORY.md
+    upd=; for w in $(git -C "$t" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p'); do
+      [ -f "$w/MEMORY.md" ] && changed "$w" MEMORY.md && { upd=1; break; }; done
+    [ -n "$upd" ] || miss+=("Wrap-up: update $name/MEMORY.md with what this session learned (WRAP-UP step 4b)")
     [ -f "$t/AGENTS.md" ] || miss+=("Wrap-up: $name has no AGENTS.md (the only repo instruction file)")
     [ -n "$(git -C "$t" ls-files CLAUDE.md .claude/CLAUDE.md 2>/dev/null)" ] && miss+=("Wrap-up: $name still tracks a CLAUDE.md — move its content into AGENTS.md and delete it")
   done
   changed "$vault" PENDING.md || miss+=("Wrap-up: move every unaddressed item into the vault PENDING.md (WRAP-UP step 4) — it hasn't changed this session")
+fi
+
+# Wrap-up mode: every c10vis-poem repo this session touched must have CI + required checks, or
+# ship-session refuses auto-merge (nothing would gate the merge).
+if [ -f "$st/wrapup-$sid" ]; then
+  rec=$(ls -t "$vault"/_recaps/*-"${sid:0:8}".md 2>/dev/null | head -1)
+  [ -n "$rec" ] && awk '/^## Repos touched/{f=1;next} /^## /{f=0} f&&/^- /{sub(/^- /,"");print}' "$rec" | while read -r t; do
+    c=$(git -C "$t" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || continue
+    [ "${c##*/}" = .git ] && t=${c%/.git}
+    u=$(git -C "$t" remote get-url origin 2>/dev/null); u=${u%.git}
+    [[ $u =~ github.com[:/](c10vis-poem/[^/]+)$ ]] || continue
+    s=${BASH_REMATCH[1]}; case $s in */NovAExorpus) continue ;; esac
+    d=$(git -C "$t" symbolic-ref -q --short refs/remotes/origin/HEAD); d=${d#origin/}
+    # only repos with something to ship (commits on a local branch not on any remote)
+    ship=$(git -C "$t" for-each-ref --format='%(refname:short)' refs/heads | while read -r b; do
+      [ "$b" = "${d:-main}" ] && continue
+      [ -n "$(git -C "$t" log -1 --format=%H "refs/heads/$b" --not --remotes --since="@$(stat -c %Y "$st/resume-$sid.ok" 2>/dev/null || echo 0)" 2>/dev/null)" ] && echo "$b"; done)   # same cutoff as ship-session
+    [ -n "$ship" ] || continue
+    why=$(bash "$(dirname "$0")/ci-ready.sh" "$s" "${d:-main}"); rc=$?
+    [ $rc -eq 0 ] && continue
+    [ $rc -eq 3 ] && why="$s: "   # private repo, free plan: only the CI workflow is required
+    # CI arriving in the branch being shipped counts for the workflow half (its PR runs it)
+    for b in $ship; do
+      [ -n "$(git -C "$t" ls-tree -r --name-only "$b" -- .github/workflows 2>/dev/null)" ] && why=${why//no CI workflow;/} && why=${why//no CI workflow/} && break
+    done
+    case $why in *": ") ;; *) echo "$why" ;; esac
+  done | sort -u > "$st/ci-missing-$sid.txt"
+  while read -r m; do miss+=("Wrap-up: $m — add a CI workflow (gitleaks + tests) and branch protection with required checks (github-project skill) before shipping"); done < "$st/ci-missing-$sid.txt"
+fi
+
+# Wrap-up mode: the operator reviews every recorded change (change-log.sh) and approves the push
+if [ -f "$st/wrapup-$sid" ] && [ -s "$st/changes-$sid.log" ] && [ ! -f "$st/pushok-$sid" ]; then
+  miss+=("Wrap-up: show the operator the change review (bash ~/.claude/hooks/review-changes.sh $sid; paste its tables and the outside-the-vault list) — it needs the operator's /ok push before anything ships")
 fi
 
 # ENFORCEMENTS requirements still pending for this prompt
@@ -112,7 +148,7 @@ fi
 # Items only the operator can close (/ok, /defer) block once, then let the turn end so the operator can
 # type them: re-blocking on stop_hook_active would loop forever with no way for them to answer.
 if [ "$(jq -r '.stop_hook_active // false' <<<"$in")" = true ]; then
-  ops=0; for m in "${miss[@]}"; do case $m in *"needs the operator's /ok"*) ops=$((ops+1)) ;; esac; done
+  ops=0; for m in "${miss[@]}"; do case $m in *"needs the operator's /ok"*) ops=$((ops+1)) ;; esac; done   # incl. "/ok push"
   [ "$ops" -eq ${#miss[@]} ] && { echo "$(date +%T) STOP-YIELD awaiting operator /ok|/defer" >> "$log"; exit 0; }
 fi
 reason="BLOCKED (stop-gate): not done yet —"; for m in "${miss[@]}"; do reason+=$'\n'"- $m"; done
