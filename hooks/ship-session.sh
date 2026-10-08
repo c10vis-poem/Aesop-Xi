@@ -102,7 +102,12 @@ ship_branch() { # $1 = local branch, in $top
     git push -q origin "$br:refs/heads/saved/$br" 2>/dev/null && lines+=("- $top: kept copy saved/$br (operator #keep-branch)")
   fi
   # No auto-merge without CI and required checks: on such a branch "auto" means "merge now, unchecked".
-  if [ -n "$pr" ] && ! why=$(bash "$(dirname "$0")/ci-ready.sh" "$slug" "$def"); then
+  why=$(bash "$(dirname "$0")/ci-ready.sh" "$slug" "$def"); rc=$?
+  if [ -n "$pr" ] && [ $rc -eq 3 ]; then   # private + free plan: wait for green CI, then merge
+    if timeout "$POLL_MAX" gh pr checks "$pr" --watch --fail-fast >/dev/null 2>&1 \
+       && gh pr merge "$pr" --squash --delete-branch >/dev/null 2>&1; then am="merged after green CI (private repo)"
+    else am="refused (CI not green; private repo, merge by hand)"; fi
+  elif [ -n "$pr" ] && [ $rc -ne 0 ]; then
     am="refused ($why)"
   else
     [ -n "$pr" ] && gh pr merge "$pr" --auto --squash --delete-branch >/dev/null 2>&1 && am=on

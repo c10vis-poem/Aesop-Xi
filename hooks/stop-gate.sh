@@ -124,10 +124,12 @@ if [ -f "$st/wrapup-$sid" ]; then
       [ "$b" = "${d:-main}" ] && continue
       [ -n "$(git -C "$t" log -1 --format=%H "refs/heads/$b" --not --remotes 2>/dev/null)" ] && echo "$b"; done)
     [ -n "$ship" ] || continue
-    why=$(bash "$(dirname "$0")/ci-ready.sh" "$s" "${d:-main}") && continue
+    why=$(bash "$(dirname "$0")/ci-ready.sh" "$s" "${d:-main}"); rc=$?
+    [ $rc -eq 0 ] && continue
+    [ $rc -eq 3 ] && why="$s: "   # private repo, free plan: only the CI workflow is required
     # CI arriving in the branch being shipped counts for the workflow half (its PR runs it)
     for b in $ship; do
-      [ -n "$(git -C "$t" ls-tree -r --name-only "$b" -- .github/workflows 2>/dev/null)" ] && why=${why//no CI workflow;/} && break
+      [ -n "$(git -C "$t" ls-tree -r --name-only "$b" -- .github/workflows 2>/dev/null)" ] && why=${why//no CI workflow;/} && why=${why//no CI workflow/} && break
     done
     case $why in *": ") ;; *) echo "$why" ;; esac
   done | sort -u > "$st/ci-missing-$sid.txt"
