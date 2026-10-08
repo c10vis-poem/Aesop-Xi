@@ -98,7 +98,10 @@ if [ -f "$st/wrapup-$sid" ]; then
     name=$(basename "$(git -C "$t" config --get remote.origin.url 2>/dev/null | sed 's/\.git$//')" 2>/dev/null); [ -n "$name" ] || name=$(basename "$t")
     case $base_repos in *" $name "*) ;; *) continue ;; esac
     [ -f "$t/MEMORY.md" ] || { miss+=("Wrap-up: $name has no MEMORY.md — create it (WRAP-UP step 4b)"); continue; }
-    changed "$t" MEMORY.md || miss+=("Wrap-up: update $name/MEMORY.md with what this session learned (WRAP-UP step 4b)")
+    # a repo with several worktrees counts as updated if any of its worktrees changed MEMORY.md
+    upd=; for w in $(git -C "$t" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p'); do
+      [ -f "$w/MEMORY.md" ] && changed "$w" MEMORY.md && { upd=1; break; }; done
+    [ -n "$upd" ] || miss+=("Wrap-up: update $name/MEMORY.md with what this session learned (WRAP-UP step 4b)")
     [ -f "$t/AGENTS.md" ] || miss+=("Wrap-up: $name has no AGENTS.md (the only repo instruction file)")
     [ -n "$(git -C "$t" ls-files CLAUDE.md .claude/CLAUDE.md 2>/dev/null)" ] && miss+=("Wrap-up: $name still tracks a CLAUDE.md — move its content into AGENTS.md and delete it")
   done
@@ -116,7 +119,17 @@ if [ -f "$st/wrapup-$sid" ]; then
     [[ $u =~ github.com[:/](c10vis-poem/[^/]+)$ ]] || continue
     s=${BASH_REMATCH[1]}; case $s in */NovAExorpus) continue ;; esac
     d=$(git -C "$t" symbolic-ref -q --short refs/remotes/origin/HEAD); d=${d#origin/}
-    bash "$(dirname "$0")/ci-ready.sh" "$s" "${d:-main}"
+    # only repos with something to ship (commits on a local branch not on any remote)
+    ship=$(git -C "$t" for-each-ref --format='%(refname:short)' refs/heads | while read -r b; do
+      [ "$b" = "${d:-main}" ] && continue
+      [ -n "$(git -C "$t" log -1 --format=%H "refs/heads/$b" --not --remotes 2>/dev/null)" ] && echo "$b"; done)
+    [ -n "$ship" ] || continue
+    why=$(bash "$(dirname "$0")/ci-ready.sh" "$s" "${d:-main}") && continue
+    # CI arriving in the branch being shipped counts for the workflow half (its PR runs it)
+    for b in $ship; do
+      [ -n "$(git -C "$t" ls-tree -r --name-only "$b" -- .github/workflows 2>/dev/null)" ] && why=${why//no CI workflow;/} && break
+    done
+    case $why in *": ") ;; *) echo "$why" ;; esac
   done | sort -u > "$st/ci-missing-$sid.txt"
   while read -r m; do miss+=("Wrap-up: $m — add a CI workflow (gitleaks + tests) and branch protection with required checks (github-project skill) before shipping"); done < "$st/ci-missing-$sid.txt"
 fi
