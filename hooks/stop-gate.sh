@@ -105,6 +105,11 @@ if [ -f "$st/wrapup-$sid" ]; then
   changed "$vault" PENDING.md || miss+=("Wrap-up: move every unaddressed item into the vault PENDING.md (WRAP-UP step 4) — it hasn't changed this session")
 fi
 
+# Wrap-up mode: the operator reviews every recorded change (change-log.sh) and approves the push
+if [ -f "$st/wrapup-$sid" ] && [ -s "$st/changes-$sid.log" ] && [ ! -f "$st/pushok-$sid" ]; then
+  miss+=("Wrap-up: show the operator the change review (bash ~/.claude/hooks/review-changes.sh $sid; paste its tables and the outside-the-vault list) — it needs the operator's /ok push before anything ships")
+fi
+
 # ENFORCEMENTS requirements still pending for this prompt
 [ -s "$st/required-$sid.tsv" ] && miss+=("Pending ENFORCEMENTS: $(cut -f2 "$st/required-$sid.tsv" | paste -sd ';')")
 
@@ -112,7 +117,7 @@ fi
 # Items only the operator can close (/ok, /defer) block once, then let the turn end so the operator can
 # type them: re-blocking on stop_hook_active would loop forever with no way for them to answer.
 if [ "$(jq -r '.stop_hook_active // false' <<<"$in")" = true ]; then
-  ops=0; for m in "${miss[@]}"; do case $m in *"needs the operator's /ok"*) ops=$((ops+1)) ;; esac; done
+  ops=0; for m in "${miss[@]}"; do case $m in *"needs the operator's /ok"*) ops=$((ops+1)) ;; esac; done   # incl. "/ok push"
   [ "$ops" -eq ${#miss[@]} ] && { echo "$(date +%T) STOP-YIELD awaiting operator /ok|/defer" >> "$log"; exit 0; }
 fi
 reason="BLOCKED (stop-gate): not done yet —"; for m in "${miss[@]}"; do reason+=$'\n'"- $m"; done

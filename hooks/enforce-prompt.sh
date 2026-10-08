@@ -15,6 +15,8 @@ grep -q 'push now' <<<"$lp" && touch "$st/pushnow-$sid"
 # Any mark = checked in. "#ok N" confirms N as done if a done was proposed, else accepts the plan item.
 # Slash forms (/ok, /ok 1,3, /defer 2, /reject 2) at the start of the prompt = the # forms.
 lp=$(sed -E 's#^/(ok|defer|reject)([[:space:]]|$)#\#\1\2#' <<<"$lp")
+# Operator approves the wrap-up change review: "#ok push" / "/ok push" (read by stop-gate and ship-session)
+grep -qE '#ok[[:space:]]+push' <<<"$lp" && touch "$st/pushok-$sid"
 if [ -f "$st/resume-$sid.snap.md" ]; then
   # Bare "#ok" / "/ok" = accept every START HERE item as proposed (done → confirmed, blocked → deferred, else accepted).
   if grep -qE '^#ok[[:space:]]*$' <<<"$lp"; then

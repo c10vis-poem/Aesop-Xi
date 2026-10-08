@@ -42,6 +42,13 @@ section() { awk -v s="## $1" '/^## /{on=($0==s);next} on && /^- /{print substr($
 vault_top=$(git -C "$VAULT" rev-parse --show-toplevel 2>/dev/null)
 echo "=== $(date '+%F %T') session=$sid dry=${dry:-0}"
 
+# Nothing ships until the operator has approved the change review ("#ok push"; review-changes.sh).
+if [ -s "$STATE_DIR/changes-$sid.log" ] && [ ! -f "$STATE_DIR/pushok-$sid" ]; then
+  echo "held: change review not approved"
+  [ -z "$dry" ] && printf '\n## Shipped\n\n- NOT SHIPPED: the operator has not approved the change review (#ok push). Run hooks/review-changes.sh %s, then ship with: ship-session.sh --now %s\n' "$sid" "$sid" >> "$ledger"
+  exit 0
+fi
+
 # "Rewritten" = RESUME.md's top 40 lines carry today's date (WRAP-UP requires a dated rewrite);
 # mtime alone is unreliable (GitSync conflict handling touches the file).
 # Content check (mtime is unreliable on shared storage): differs from the hash resume-gate stored at session start.
