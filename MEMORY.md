@@ -22,3 +22,9 @@ Durable facts about this repo. Dated; newest first. Updated at session wrap-up.
 - The dead `Novus-Agenti` submodule link was removed (the repo is 404; local copy in the operator's salvage yard).
 - PR #18 (orchestration contract v0.1) is held for the grill session.
 - ~~The local `.git/hooks/post-commit` runs the vault's `tools/regenerate_masters.sh`~~ (removed 2026-10-05).
+
+## 2026-10-08
+- Hooks moved: `deploy/phone/hooks/` → `hooks/` (`git-hooks/`, `tests/` kept). `.claude/settings.json` runs them via `hooks/run-hook.sh`.
+- New/changed hooks: H2 `sync-on-use.sh` blocks until the fork is synced; `change-log.sh` + `review-changes.sh` + `/ok push` gate every push; H8 `ci-ready.sh` (CI + required checks); `documents-guard` merged into change-log. Tests: change-log 20, sync-on-use 17, enforce 16.
+- `hooks/tests/test-ship-v2.sh` fails 14/18 on origin/main as well (pre-existing, not yet fixed).
+- `unresolved.md` retired; backlog home is `PENDING.md`. `raw/` got two condensed files from NovA-Corpus.
