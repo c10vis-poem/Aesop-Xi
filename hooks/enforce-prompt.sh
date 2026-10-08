@@ -6,7 +6,7 @@ prompt=$(jq -r '.prompt // ""' <<<"$in"); cwd=$(jq -r '.cwd // ""' <<<"$in")
 st="$HOME/.claude/state"; mkdir -p "$st"
 req="$st/required-$sid.tsv"; done_="$st/satisfied-$sid.tsv"; loaded="$st/loaded-$sid.txt"; log="$st/enforce-$sid.log"
 touch "$done_" "$loaded"; : > "$req"
-rm -f "$st/pushnow-$sid"
+rm -f "$st/pushnow-$sid" "$st/docsok-$sid"
 lp=$(tr '[:upper:]' '[:lower:]' <<<"$prompt")
 # Wrap-up mode ONLY from the /wrapup command at the start of the prompt (mentions of "wrap up" don't count).
 wrapcmd=; grep -qE '^/wrap-?up([[:space:]]|$)' <<<"$lp" && { touch "$st/wrapup-$sid"; wrapcmd=1; }
@@ -46,6 +46,7 @@ first=$(sed -n '1s|^/\([A-Za-z0-9:_-]*\).*|\1|p' <<<"$prompt")
 [ -n "$first" ] && { echo "$first" >> "$loaded"; printf 'skill: %s\n' "$first" >> "$done_"; }
 
 if grep -q '#skip-enforce' <<<"$prompt"; then
+  touch "$st/docsok-$sid"
   echo "$(date +%T) SKIP operator used #skip-enforce" >> "$log"; exit 0
 fi
 
