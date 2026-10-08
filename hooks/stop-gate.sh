@@ -122,7 +122,7 @@ if [ -f "$st/wrapup-$sid" ]; then
     # only repos with something to ship (commits on a local branch not on any remote)
     ship=$(git -C "$t" for-each-ref --format='%(refname:short)' refs/heads | while read -r b; do
       [ "$b" = "${d:-main}" ] && continue
-      [ -n "$(git -C "$t" log -1 --format=%H "refs/heads/$b" --not --remotes 2>/dev/null)" ] && echo "$b"; done)
+      [ -n "$(git -C "$t" log -1 --format=%H "refs/heads/$b" --not --remotes --since="@$(stat -c %Y "$st/resume-$sid.ok" 2>/dev/null || echo 0)" 2>/dev/null)" ] && echo "$b"; done)   # same cutoff as ship-session
     [ -n "$ship" ] || continue
     why=$(bash "$(dirname "$0")/ci-ready.sh" "$s" "${d:-main}"); rc=$?
     [ $rc -eq 0 ] && continue
