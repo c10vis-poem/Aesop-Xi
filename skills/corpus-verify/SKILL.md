@@ -17,89 +17,109 @@ allowed-tools: Bash, Read, Glob, Grep
 Fire this skill after any of the following:
 
 - First run of `tools/clean.py` on a new corpus
-- New sources added to `01-sources/`
+- New sources added under `raw_database/`
 - `tools/clean.py` modified in any way
 - A specific source is suspected of losing detail through cleaning
 - Before any grill session or downstream compilation
-- Whenever the RLVR check has not been run on the current head of `02-clean/`
+- Whenever the RLVR check has not been run on the current state of `clean_md/`
 
-Do not fire this skill as a dry-run only. The output files in `03-check/` are the permanent record. Always write them.
+A full run writes `audit/`, which is the permanent record. Use `--dry-run` only to look before writing, or to grade a candidate file that is not in `clean_md/` yet.
 
 ## What this skill does not do
 
-- It does not modify `01-sources/` or `02-clean/`. Those directories are read-only from this skill's perspective.
+- It does not modify `raw_database/` or `clean_md/`. Both are read-only from this skill's point of view.
 - It does not repair any defect it finds. It reports and records. Repairs happen in a separate clean pass.
-- It does not self-certify. It shares no code, no imports, and no comparison methods with `tools/clean.py`.
+- It does not self-certify. It shares no code, no imports, and no extraction library with `tools/clean.py`.
 
 ---
 
+## Layout
+
+Everything sits at the vault root (`/storage/emulated/0/Documents/NovAExorpus`, found by `find_dirs()` as the folder under `Documents/` whose name contains `xorpus`):
+
+| Path | Role |
+|---|---|
+| `raw_database/raw/` | sources |
+| `raw_database/02_MY_ORIGINALS/` | sources |
+| `raw_database/Dump/zip/` | sources |
+| `clean_md/` | cleaned Markdown written by `tools/clean.py` |
+| `audit/` | output of `tools/check.py` |
+
+There is no `Repos*` level and no `01-sources/`, `02-clean/`, `03-check/` any more.
+
 ## Invocation
 
+Run from the vault root:
+
 ```bash
-# Standard run — reads 01-sources/, compares against 02-clean/, writes 03-check/
+# Check every clean_md/*.md (POINTER.md excluded); writes audit/
 python3 tools/check.py
 
-# Dry run — prints roll-up to stdout, writes nothing
-python3 tools/check.py --dry-run
+# Check named files only (any path; the file need not live in clean_md/)
+python3 tools/check.py clean_md/foo.md "some dir/bar.md"
+
+# Dry run: prints the roll-up to stdout, writes nothing
+python3 tools/check.py --dry-run [CLEAN_MD ...]
 ```
 
-Paths are hardcoded: `01-sources` (source), `02-clean` (clean), `03-check` (output). Run from the repo root.
+Usage line: `check.py [--dry-run] [CLEAN_MD ...]`. The exit code is 1 when any file FAILs, else 0.
+
+Pairing is by frontmatter. `check.py` reads the `source:` line from the first 500 characters of the clean file (quotes stripped) and resolves it, in order, as a path relative to the vault root (or absolute), then as a bare filename in `raw/`, `02_MY_ORIGINALS/`, and `Dump/zip/`. A clean file whose source cannot be resolved gets `NO-SOURCE`.
 
 ### Dependencies
 
 ```bash
-pip install pypdf
+pip install pypdf beautifulsoup4
 ```
 
-All other dependencies are Python stdlib: `zipfile`, `xml.etree`, `html.parser`, `difflib`, `unicodedata`, `io`, `os`, `re`, `json`, `datetime`.
+Everything else is stdlib: `zipfile`, `xml.etree`, `difflib`, `unicodedata`, `os`, `re`, `datetime`.
 
 ---
 
 ## Extractor independence
 
-This is the core of why the check works as RLVR. The tool that cleaned a file used one set of libraries; this checker uses a completely different set. A false pass cannot emerge from both extractors making the same mistake.
+This is why the check works as RLVR. The cleaner read a file with one set of libraries; the checker reads it with a different set, so a false pass cannot come from both extractors making the same mistake.
 
 | Format | `tools/clean.py` uses | `tools/check.py` uses |
 |---|---|---|
-| PDF | pymupdf `fitz.page.get_text()` | pypdf `PdfReader.extract_text()` |
-| DOCX | pandoc docx → markdown | stdlib `zipfile` + `xml.etree` over `word/document.xml`, headers, footers, footnotes, endnotes, hyperlinks via `document.xml.rels` |
-| HTML | pandoc html → plain | stdlib `html.parser`, one text node at a time, tag boundaries preserved, `alt`/`title` captured |
-| Text | `open().read()` utf-8 | byte read + BOM/encoding probe |
-| ZIP | skipped | opened and enumerated — text members extracted and checked |
+| PDF | mutool (mupdf) `mutool draw -F text` | pypdf `PdfReader.extract_text()` |
+| DOCX | python-docx (paragraphs, heading levels, tables) | stdlib `zipfile` + `xml.etree` over `word/document.xml` (`w:t` runs per `w:p`) |
+| HTML | stdlib `html.parser` | BeautifulSoup4 `get_text(separator="\n")` |
+| Text | `open().read()` utf-8 | byte read + encoding probe (utf-8, then latin-1), BOM noted |
+
+Type is sniffed from magic bytes, not the extension. In `check.py` anything starting with `PK` is read as DOCX, and XML-like markup that is not HTML is read as text.
+
+`clean.py` extractors raise on failure (mutool missing or non-zero exit, a DOCX python-docx cannot open, an unreadable HTML file). `main()` counts the file under Errors and writes no clean file, so an error string never becomes cleaned content. `clean.py` also skips any raw file that a `clean_md/` file already names in its `source:` line, so reruns no longer add `_N.md` copies.
 
 ---
 
 ## Core algorithm
 
-### squash(s)
+### squash(s) and wordstream(s)
 
-Fold Unicode to ASCII via NFD decomposition, lowercase, strip everything non-alphanumeric. Makes `CHIP SM8750` and `CHIPSM8750` both `chipsm8750`. Used for containment checks where whitespace and punctuation differences are irrelevant.
+`fold` maps Unicode to comparable ASCII (NFKC, invisible marks and the BOM dropped, ligatures such as Æ to AE, then NFKD with combining marks removed) and lowercases. `squash` then strips everything non-alphanumeric, so `CHIP SM8750` and `CHIPSM8750` both become `chipsm8750`. `wordstream` collapses separators to single spaces instead, which keeps word boundaries and shows whether a value survived as its own word or got fused to a neighbor.
 
-### wordstream(s)
+### find_atoms(lines)
 
-Same Unicode fold, but collapse separators to single spaces instead of stripping them. Preserves word boundaries. Detects whether a value survived as a separate word or got fused to its neighbor.
+Extracts named values from the checker's read of the source (URLs, paths, versions, measurements, identifiers, dates; see `ATOM_RULES`). Each atom is looked for by containment in the clean text, squashed and as a wordstream.
 
-### find_atoms(text)
+**Adjacency guard:** if the checker's own extractor produced an atom fused to its neighbor, the atom is set aside as unjudgeable and is not a finding. The checker cannot claim the clean file lost something it could not read cleanly itself.
 
-Extract named values from the source: URLs, file paths, version strings, measurements (e.g., `32 GB`), identifiers, dates. Each atom is checked by containment in the clean text (both squash and wordstream).
+### Segment containment and chunk_split
 
-**Adjacency guard:** If the checker's own extractor produced an atom fused to its neighbor (i.e., wordstream of the atom is not found in wordstream of the checker's own extraction), that atom is set aside as unjudgeable. It is not reported as a finding. The checker cannot assert that the clean file is missing something it couldn't read cleanly itself.
+Each non-blank source line is a segment (lines over 300 characters are split at sentence ends); segments of at least `MIN_SEGMENT` squashed characters are checked for containment. A segment that fails goes to `chunk_split`, a greedy search for the longest sub-runs that do survive. The pieces that do not survive name the lost words, verbatim, with no score.
 
-### segment containment
+### edge_check
 
-The source text is split into segments. Each segment is checked for containment in the clean text via squash comparison. Segments that pass are done. Segments that fail go to chunk_split.
+The first and last `EDGE_CHARS` (60) squashed characters of the source are tested chunk by chunk rather than as one run, because two PDF readers disagree about icon glyphs and line breaks at page ends. A piece found nowhere in the clean file means the start or end was lost.
 
-### chunk_split(segment, clean)
+### furniture_class(line, kind)
 
-For a segment that fails containment: greedy search for the largest contiguous sub-runs that do survive in the clean text. The sub-runs that don't survive name the culprit words. This is reported verbatim — no percentage, no score.
+Says whether a source line missing from the clean file is furniture. The policy is transcribed by hand into `check.py` from `README.md` "The one job" (it is not read at runtime and not imported from `clean.py`): blank lines, browser or app chrome (`CHROME`: "Use code with caution", "Show more", "Sign in" and similar), and, for PDFs only, bare page numbers (`PAGE_NUMBER`). A line made of nothing but these fragments is furniture; anything else that went missing is a finding.
 
-### edge_check(source_line, clean_text)
+### looks_truncated
 
-For lines near the boundaries of a source document — where icon-font glyphs or format-specific artifacts often appear — uses a chunk-based test rather than exact-string matching. This prevents icon glyph rendering differences between extractors from producing false failures.
-
-### furniture_class(line)
-
-Classifies a line the checker found in the source that is absent from the clean file. Re-derives the furniture strip policy from `README.md` and `AGENTS.md` independently, then checks whether the line matches any furniture rule. If it does, the absence is expected — not a finding. If it doesn't match any furniture rule, it's a content loss.
+If the source itself stops mid-sentence, that is reported as an upstream defect, never repaired.
 
 ---
 
@@ -107,159 +127,90 @@ Classifies a line the checker found in the source that is absent from the clean 
 
 | Verdict | Meaning |
 |---|---|
-| `PASS` | All atoms and segments found in clean. All stripped lines are furniture. |
-| `PASS WITH WARNINGS` | No content missing, but shape differences noted: respaced values, UTF-8 BOM present in markdown body, or similar. Not a content defect. |
-| `FAIL` | At least one atom or segment is missing from the clean file and the adjacency guard does not excuse it. |
-| `PASS + UPSTREAM DEFECT` | Content passed, but source itself ends mid-sentence or is truncated before this repo touched it. Not a cleaning defect — a defect in the source file. |
-| `PASS WITH WARNINGS + UPSTREAM DEFECT` | Both conditions above together. |
-| `NO-COUNTERPART` | A source file exists in `01-sources/` with no matching file in `02-clean/`. Requires decision: either clean it or formally document why it was skipped. |
-| `ERROR` | The checker itself hit an exception processing this file. Investigate before treating as a pass. |
+| `PASS` | Every atom and segment the checker found in the source is in the clean file. |
+| `PASS WITH WARNINGS` | Nothing missing, but shape differences noted, for example a respaced value or a UTF-8 BOM carried into the Markdown body. |
+| `FAIL` | At least one atom, segment, or edge piece is missing and the adjacency guard does not excuse it. |
+| `... + UPSTREAM DEFECT` | Suffix on any of the above: the source itself ends mid-sentence. |
+| `NO-SOURCE` | The clean file has no `source:` line, or the source it names cannot be found. |
+
+There is no `ERROR` verdict. An exception inside the checker stops the run with a traceback; fix the cause and rerun. Never read a crashed run as a pass.
 
 ---
 
-## Calibration rules — what to exclude from findings
+## Calibration rules: what is not a finding
 
-These are not findings. Do not report them, do not add them to `FINDINGS.jsonl`.
-
-1. **Atoms the checker's own extractor produced fused to its neighbor.** The adjacency guard handles this automatically. If an atom is unjudgeable by the checker's own read, it cannot be asserted missing.
-
-2. **PDF table cells welded by pypdf.** pypdf does not respect table cell boundaries in all PDFs. If multiple cells are fused in the checker's extraction but not in the source, the affected atoms are unjudgeable.
-
-3. **Icon-font glyphs that differ between readers.** Use the chunk-based edge test (`edge_check`), not exact-string. Two readers will render icon fonts differently; that difference is not a content loss.
-
-4. **Lines matching the furniture strip policy.** `furniture_class` handles this. A line the clean file removed that matches the strip policy is expected; it is not a finding.
-
-5. **UTF-8 BOM in markdown body.** Reported as a warning (shape), not as a content failure. `tools/clean.py` opens text files with `utf-8` not `utf-8-sig`, so BOMs pass through into the markdown. 21 files in the current corpus carry this. It is the cleaner's known behavior, documented.
-
-6. **Source upstream defects.** A source that ends mid-sentence was truncated before this repo touched it — often because the operator stripped trailing prompts, hallucinated code, or filler before saving. These are reported as `UPSTREAM DEFECT` labels, not as cleaning failures. Do not attempt to repair them from the source.
+1. **Atoms the checker's own extractor fused to a neighbor.** The adjacency guard drops them automatically.
+2. **PDF table cells welded by pypdf.** Atoms affected that way are unjudgeable, not missing.
+3. **Icon-font glyphs that differ between readers.** `edge_check` is chunk-based for this reason.
+4. **Lines matching the furniture policy.** `furniture_class` handles them.
+5. **UTF-8 BOM in a Markdown body.** A warning (shape), not a content failure.
+6. **Source upstream defects.** Reported as `UPSTREAM DEFECT`, not as cleaning failures. Do not repair them from the source.
 
 ---
 
 ## Output files
 
-All output goes to `03-check/`. Directory structure mirrors `01-sources/`.
+A full run (no `--dry-run`) writes into `audit/`:
 
-### Per-source report: `<name>.check.md`
+- `audit/<clean name>.check.md`, one per checked clean file. Frontmatter: `checker`, `checked`, `source`, `cleaned`, `source_kind`, `extractor`, `independent_of`, `verdict`, `fails`, `warnings`, `upstream_defects`. Body: verdict, a meta table (atoms judged, atoms set aside, segments checked, furniture lines, whether the start and end survive), then sections for Fails, Warnings, Upstream defects (each capped at `MAX_LIST` = 40 entries), and the independent furniture audit.
+- `audit/rlvr_verification_report.md`, the roll-up: one table row per clean file with verdict and fail count.
 
-```markdown
----
-source: 01-sources/<path>
-clean:  02-clean/<path>
-kind:   pdf | docx | html | text | zip
-verdict: PASS | PASS WITH WARNINGS | FAIL | ...
-checked: 2026-08-27
----
-
-## Verdict
-
-[verdict label and one-sentence summary]
-
-## Findings
-
-[Only present if verdict is not PASS. Each finding includes:]
-- Source line number(s)
-- Verbatim text from source
-- What the clean file contains instead (or: absent)
-- Finding class: fused token | missing atom | truncated segment | ...
-
-## Furniture audit
-
-[Lines removed by clean.py, classified as furniture or content-loss]
-
-## Edge check
-
-[Results of boundary/icon-glyph checks near document start and end]
-```
-
-### Roll-up: `SUMMARY.md`
-
-Verdict table (one row per source), total counts per verdict, list of every non-PASS with a link to its `.check.md`. Written to `03-check/SUMMARY.md`.
-
-### Machine-readable: `FINDINGS.jsonl`
-
-One JSON object per finding, written to `03-check/FINDINGS.jsonl`. Schema:
-
-```json
-{
-  "source": "01-sources/path/to/file",
-  "clean":  "02-clean/path/to/file",
-  "kind":   "pdf | docx | html | text | zip",
-  "severity": "FAIL | WARN | UPSTREAM",
-  "class":  "fused token | missing atom | truncated segment | stray BOM | respaced value | truncated source",
-  "finding": "human-readable sentence naming the problem",
-  "detail": "verbatim text or additional context"
-}
-```
+Stdout prints one line per file (`[VERDICT] name N fails`), the first five fail reasons indented under it, and a summary of PASS, FAIL, and other counts.
 
 ---
 
-## Config layer
+## Tunables
 
-These are the parameters that should be configurable per-corpus invocation. Currently hardcoded in `tools/check.py`; the grill session should decide whether to expose them as CLI flags or a config file.
+Constants at module level in `tools/check.py`; there are no CLI flags beyond `--dry-run`.
 
-| Parameter | Current value | Description |
+| Constant | Value | Meaning |
 |---|---|---|
-| `SRC` | `01-sources` | Source directory |
-| `CLEAN` | `02-clean` | Clean directory |
-| `OUT` | `03-check` | Output directory |
-| `FORMATS` | `{pdf, docx, html, txt, md, zip}` | Which formats to process |
-| `FURNITURE_POLICY` | Derived from README + AGENTS.md at runtime | Strip rules — re-derived independently, not imported from clean.py |
-| `ATOM_TYPES` | URL, path, measurement, version, identifier, date | Classes of values extracted by find_atoms |
-| `ADJACENCY_GUARD` | On | Whether to exclude atoms the checker itself fused to neighbors |
-| `EDGE_LINES` | 10 | Lines at document start/end to use edge_check instead of exact-string |
+| `MIN_MISSING` | 3 | squashed length below which absence cannot be asserted |
+| `MIN_FUSED` | 4 | squashed length below which a substring hit means nothing |
+| `MIN_SEGMENT` | 24 | squashed length of a segment worth checking as a whole |
+| `EDGE_CHARS` | 60 | squashed characters tested at each end of the source |
+| `MAX_LIST` | 40 | findings listed per section in a `.check.md` |
+| `CHROME`, `PAGE_NUMBER` | see code | the hand-transcribed furniture policy |
 
 ---
 
-## After running — required actions
+## After running: required actions
 
 ### On FAIL
 
-1. Open `03-check/<name>.check.md` and read the finding verbatim.
-2. Open `01-sources/<name>` and `02-clean/<name>` side by side.
-3. Confirm the finding is real (not an adjacency-guard miss — those are excluded automatically).
-4. Fix by re-running `tools/clean.py` with the specific source, or by patching the clean file directly if the cleaner cannot be made to produce the right output.
-5. Re-run `python3 tools/check.py` to confirm the fix. The finding must be absent from the new report.
-6. Commit both the fixed `02-clean/` file and the updated `03-check/` report together.
+1. Open `audit/<name>.check.md` and read the finding verbatim.
+2. Open the source and the clean file side by side.
+3. Confirm the finding is real.
+4. Fix by re-cleaning that source (delete or move the stale clean file first, since `clean.py` skips sources that already have one), or by patching the clean file directly when the cleaner cannot produce the right output.
+5. Rerun `python3 tools/check.py <clean file>`. The finding must be gone.
 
-### On NO-COUNTERPART
+### On NO-SOURCE
 
-Two options — pick one, document the decision in a comment at the top of the source file:
-
-- **Clean it:** run `tools/clean.py` on just that source, confirm the clean file is produced, re-run the check.
-- **Formally skip it:** add an entry to `03-check/<name>.check.md` with verdict `NO-COUNTERPART` and a one-sentence reason. Hard rule 2 (same file count out as in) is satisfied by the documented skip, not by pretending the file doesn't exist.
+Fix the `source:` line so it resolves (vault-relative path or a bare filename present in `raw/`, `02_MY_ORIGINALS/`, or `Dump/zip/`), or record why the file has no source.
 
 ### On PASS WITH WARNINGS
 
-No action required unless a warning escalates. UTF-8 BOM warnings are expected for 21 current files and require no action. Respaced-value warnings are shape differences, not content losses.
+No action unless a warning escalates. BOM and respaced-value warnings are shape differences, not content losses.
 
 ### On UPSTREAM DEFECT
 
-Do not attempt to repair. The source is truncated before this repo touched it. Record it, leave it. If the operator later provides an updated source file, re-run both clean and check on it.
-
-### On ERROR
-
-Investigate immediately. Do not treat an ERROR as a pass. Read the stack trace in the `.check.md`, fix the underlying issue (usually a format the checker's reader can't parse), re-run.
+Do not repair. The source was truncated before this repo touched it. Record it and leave it. If the operator later provides a complete source, rerun both clean and check on it.
 
 ---
 
 ## Extension to other corpora
 
-This skill is not specific to the NovAExorpus corpus. To apply it to another repo or corpus:
-
-1. Set `SRC`, `CLEAN`, `OUT` to the appropriate directories (make them configurable — see Config layer).
-2. Confirm the furniture strip policy is documented in that repo's README or AGENTS.md — `furniture_class` re-derives it from there.
-3. Confirm `tools/check.py` is present or copied in (it imports nothing from `tools/clean.py` and has no repo-specific logic).
-4. Run. The FINDINGS.jsonl schema is identical across all corpora.
-
-The JSONL manifest pattern (Pattern 02 in this prep doc) pairs with corpus-verify: once a corpus has a `MANIFEST.jsonl`, the checker can be pointed at specific files by ID rather than walking the full tree.
+1. Point `find_dirs()` in `tools/check.py` at the other corpus's source, clean, and audit folders.
+2. Re-transcribe the furniture policy (`CHROME`, `PAGE_NUMBER`) from that corpus's README by hand; do not import it from its cleaner.
+3. Confirm the cleaner there uses different extraction libraries from the ones listed above for `check.py`, or swap the checker's extractors so they stay disjoint.
+4. Run.
 
 ---
 
-## Known issues in current corpus (2026-08-27)
+## Known issues (2026-10-08)
 
-| File | Issue | Status |
-|---|---|---|
-| `Nova Corpus — Device Stack.html` | 7 fused tokens — CHIP, 32 GB, CLIENTS, 4 repo paths fused by pandoc html→plain. Source separates them at element boundaries. | **Open — needs re-clean with html.parser** |
-| `SKILLS.md/technical-builder-style.skill.zip` | No counterpart in `02-clean/`. ZIP was skipped; it contains text members. | **Open — decide: clean or document skip** |
-| 21 files | UTF-8 BOM passes through into markdown body | Warning only — no action required |
-| 26 files | Source truncated mid-sentence (upstream defect) | Documented — no repair action |
+| Issue | Status |
+|---|---|
+| `clean_md/` holds `_N.md` copies from earlier `clean.py` runs; 82 files are exact duplicates of another (ignoring the `cleaned:` date). `clean.py` prints this count each run. | Open: not deleted, needs an operator decision |
+| `build_pairs()` in `check.py` is unused (left over from a splice) | Harmless |
+| A `PK` file that is a plain ZIP, not a DOCX, makes `check.py` crash (no `word/document.xml`) | Open |
