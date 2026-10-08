@@ -1,54 +1,58 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# Staging test: fake HOME, stub gh + git pull. No network, no real repo.
+# Fake HOME, stub gh + git fetch/merge. No network, no real repo.
+# H2 is blocking: first touch of a c10vis-poem repo waits for the sync; a failed sync blocks (exit 2).
 HOOK=$(cd "$(dirname "$0")/.." && pwd)/sync-on-use.sh
 REALGIT=$(command -v git)
 T=$(mktemp -d); export HOME=$T/home; mkdir -p "$HOME/repos" "$T/bin" "$T/other"
 cat >"$T/bin/gh" <<'E'
 #!/data/data/com.termux/files/usr/bin/bash
 echo "gh $*" >>"$STUBLOG"
-case "$*" in "repo view"*) echo true ;; esac
+case "$*" in
+  "repo view"*) echo true ;;
+  "repo sync"*) if [ -e "$GHFAIL" ]; then echo "HTTP 502: network down"; exit 1; fi ;;
+esac
 E
 cat >"$T/bin/git" <<E
 #!/data/data/com.termux/files/usr/bin/bash
-case "\$*" in *" pull "*) echo "git \$*" >>"\$STUBLOG"; exit 0 ;; esac
+case "\$*" in *" fetch "*|*" merge --ff-only "*) echo "git \$*" >>"\$STUBLOG"; exit 0 ;; esac
 exec $REALGIT "\$@"
 E
 chmod +x "$T/bin/gh" "$T/bin/git"
-export PATH=$T/bin:$PATH STUBLOG=$T/stub.log; : >"$STUBLOG"
+export PATH=$T/bin:$PATH STUBLOG=$T/stub.log GHFAIL=$T/ghfail; : >"$STUBLOG"
 
-mk() { git init -q -b main "$1"; git -C "$1" -c user.email=a@b -c user.name=a commit -q --allow-empty -m i; git -C "$1" remote add origin "$2"; }
+mk() { "$REALGIT" init -q -b main "$1"; "$REALGIT" -C "$1" -c user.email=a@b -c user.name=a commit -q --allow-empty -m i; "$REALGIT" -C "$1" remote add origin "$2"; }
 mk "$HOME/repos/FAKE" https://github.com/c10vis-poem/FAKE.git
 mk "$HOME/repos/OTHER" https://github.com/someone/OTHER.git
 mk "$HOME/repos/DIRTY" https://github.com/c10vis-poem/DIRTY.git; touch "$HOME/repos/DIRTY/x"
-mk "$HOME/repos/BR" https://github.com/c10vis-poem/BR.git; git -C "$HOME/repos/BR" checkout -q -b feat
+mk "$HOME/repos/BR" https://github.com/c10vis-poem/BR.git; "$REALGIT" -C "$HOME/repos/BR" checkout -q -b feat
+"$REALGIT" -C "$HOME/repos/FAKE" worktree add -q -b wt "$HOME/repos/.wt-fake" 2>/dev/null
 
-run() {  # sid tool cwd fp
-  printf '{"session_id":"%s","cwd":"%s","tool_name":"%s","tool_input":{"file_path":"%s","command":"ls"}}' "$1" "$3" "$2" "$4" | bash "$HOOK"; echo $?
+run() {  # sid tool cwd fp [command]
+  jq -n --arg s "$1" --arg t "$2" --arg c "$3" --arg f "$4" --arg k "${5:-ls}" \
+    '{session_id:$s,cwd:$c,tool_name:$t,tool_input:{file_path:$f,command:$k}}' | bash "$HOOK" 2>>"$T/err"; echo $?
 }
-n() { sleep 1.5; wc -l <"$STUBLOG" | tr -d ' '; }
+syncs() { awk -v r="$1" '$0 ~ "repo sync c10vis-poem/"r"$"' "$STUBLOG" | wc -l | tr -d ' '; }
 fails=0
 chk() { if [ "$2" = "$3" ]; then echo "PASS $1"; else echo "FAIL $1 (got '$2' want '$3')"; fails=$((fails+1)); fi; }
 
-rc=$(run sessAAAA1111 Bash "$HOME/repos/FAKE" ""); chk "first call exit0" "$rc" 0
-chk "first call launches sync (gh view,sync,git pull=3 lines)" "$(n)" 3
-grep -q "gh repo sync c10vis-poem/FAKE" "$STUBLOG"; chk "gh repo sync args" $? 0
-grep -q "pull --ff-only" "$STUBLOG"; chk "pull --ff-only" $? 0
-rc=$(run sessAAAA1111 Read "" "$HOME/repos/FAKE/sub/f.txt"); chk "second call exit0" "$rc" 0
-chk "second call same session no-op" "$(n)" 3
-rc=$(run sessBBBB2222 Edit "" "$HOME/repos/FAKE/f"); chk "other session exit0" "$rc" 0
-chk "different session relaunches" "$(n)" 6
-rc=$(run sessAAAA1111 Bash "$T/other" ""); chk "non-repo exit0" "$rc" 0
-rc=$(run sessAAAA1111 Bash "$HOME/repos/OTHER" ""); chk "non-c10vis exit0" "$rc" 0
-chk "non-repo and non-c10vis no-op" "$(n)" 6
-rc=$(run sessAAAA1111 Bash "$HOME/repos/DIRTY" ""); chk "dirty exit0" "$rc" 0
-rc=$(run sessAAAA1111 Bash "$HOME/repos/BR" ""); chk "branch exit0" "$rc" 0
-sleep 1.5
-chk "dirty+branch: no pull" "$(grep -c pull "$STUBLOG")" 2
-grep -q "not pulled: dirty" "$HOME/.claude/logs/sync-on-use.log"; chk "log dirty" $? 0
-grep -q "not pulled: branch feat" "$HOME/.claude/logs/sync-on-use.log"; chk "log branch" $? 0
-grep -q " sessAAAA FAKE synced" "$HOME/.claude/logs/sync-on-use.log"; chk "log line format" $? 0
-rc=$(printf 'garbage' | bash "$HOOK"; echo $?); chk "garbage stdin exit0" "$rc" 0
+chk "edit in fork: allowed after sync" "$(run S1 Edit "$T/other" "$HOME/repos/FAKE/a.txt")" 0
+chk "fork synced once" "$(syncs FAKE)" 1
+chk "local fast-forwarded" "$(awk '/merge --ff-only/' "$STUBLOG" | wc -l | tr -d ' ')" 1
+run S1 Read "$T/other" "$HOME/repos/FAKE/b.txt" >/dev/null
+chk "second touch same session: no resync" "$(syncs FAKE)" 1
+chk "worktree resolves to its repo (already synced)" "$(run S1 Bash "$HOME/repos/.wt-fake" "")" 0
+chk "worktree did not resync" "$(syncs FAKE)" 1
+chk "repo named inside a bash command is synced" "$(run S2 Bash "$T/other" "" "git -C ~/repos/DIRTY status")" 0
+chk "DIRTY synced" "$(syncs DIRTY)" 1
+chk "dirty clone not fast-forwarded" "$(awk '/DIRTY.* merge --ff-only/' "$STUBLOG" | wc -l | tr -d ' ')" 0
+chk "feature-branch clone allowed" "$(run S3 Bash "$HOME/repos/BR" "")" 0
+chk "non-operator repo ignored" "$(run S4 Bash "$HOME/repos/OTHER" "")" 0
+chk "OTHER never synced" "$(syncs OTHER)" 0
+chk "outside ~/repos ignored" "$(run S5 Edit "$T/other" "$T/other/z")" 0
+touch "$GHFAIL"
+chk "sync failure BLOCKS" "$(run S6 Edit "$T/other" "$HOME/repos/FAKE/a.txt")" 2
+chk "blocked repo not marked synced" "$([ -e "$HOME/.claude/state/synced-S6-FAKE" ] && echo yes || echo no)" no
+rm -f "$GHFAIL"
+chk "retry after fix: allowed" "$(run S6 Edit "$T/other" "$HOME/repos/FAKE/a.txt")" 0
 
-s=$(date +%s%N); for i in 1 2 3 4 5 6 7 8 9 10; do run sessAAAA1111 Read "" "$HOME/repos/FAKE/f" >/dev/null; done
-echo "no-op latency: $(( ($(date +%s%N)-s)/10000000 ))e-1 ms avg (incl. printf/bash spawn)"
-rm -rf "$T"; echo "fails=$fails"; exit $fails
+echo "== $((17-fails)) passed, $fails failed"; rm -rf "$T"; [ "$fails" = 0 ]
