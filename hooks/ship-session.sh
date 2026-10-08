@@ -101,7 +101,12 @@ ship_branch() { # $1 = local branch, in $top
   if grep -Fxq -- "$br" "$STATE_DIR/keep-$sid.txt" 2>/dev/null; then   # operator said #keep-branch
     git push -q origin "$br:refs/heads/saved/$br" 2>/dev/null && lines+=("- $top: kept copy saved/$br (operator #keep-branch)")
   fi
-  [ -n "$pr" ] && gh pr merge "$pr" --auto --squash --delete-branch >/dev/null 2>&1 && am=on
+  # No auto-merge without CI and required checks: on such a branch "auto" means "merge now, unchecked".
+  if [ -n "$pr" ] && ! why=$(bash "$(dirname "$0")/ci-ready.sh" "$slug" "$def"); then
+    am="refused ($why)"
+  else
+    [ -n "$pr" ] && gh pr merge "$pr" --auto --squash --delete-branch >/dev/null 2>&1 && am=on
+  fi
   B_top+=("$top") B_br+=("$br") B_pr+=("${pr:-none}") B_am+=("$am") B_mg+=("$([ -n "$pr" ] && echo pending || echo no-PR)")
 }
 

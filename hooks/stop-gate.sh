@@ -105,6 +105,22 @@ if [ -f "$st/wrapup-$sid" ]; then
   changed "$vault" PENDING.md || miss+=("Wrap-up: move every unaddressed item into the vault PENDING.md (WRAP-UP step 4) — it hasn't changed this session")
 fi
 
+# Wrap-up mode: every c10vis-poem repo this session touched must have CI + required checks, or
+# ship-session refuses auto-merge (nothing would gate the merge).
+if [ -f "$st/wrapup-$sid" ]; then
+  rec=$(ls -t "$vault"/_recaps/*-"${sid:0:8}".md 2>/dev/null | head -1)
+  [ -n "$rec" ] && awk '/^## Repos touched/{f=1;next} /^## /{f=0} f&&/^- /{sub(/^- /,"");print}' "$rec" | while read -r t; do
+    c=$(git -C "$t" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || continue
+    [ "${c##*/}" = .git ] && t=${c%/.git}
+    u=$(git -C "$t" remote get-url origin 2>/dev/null); u=${u%.git}
+    [[ $u =~ github.com[:/](c10vis-poem/[^/]+)$ ]] || continue
+    s=${BASH_REMATCH[1]}; case $s in */NovAExorpus) continue ;; esac
+    d=$(git -C "$t" symbolic-ref -q --short refs/remotes/origin/HEAD); d=${d#origin/}
+    bash "$(dirname "$0")/ci-ready.sh" "$s" "${d:-main}"
+  done | sort -u > "$st/ci-missing-$sid.txt"
+  while read -r m; do miss+=("Wrap-up: $m — add a CI workflow (gitleaks + tests) and branch protection with required checks (github-project skill) before shipping"); done < "$st/ci-missing-$sid.txt"
+fi
+
 # Wrap-up mode: the operator reviews every recorded change (change-log.sh) and approves the push
 if [ -f "$st/wrapup-$sid" ] && [ -s "$st/changes-$sid.log" ] && [ ! -f "$st/pushok-$sid" ]; then
   miss+=("Wrap-up: show the operator the change review (bash ~/.claude/hooks/review-changes.sh $sid; paste its tables and the outside-the-vault list) — it needs the operator's /ok push before anything ships")
