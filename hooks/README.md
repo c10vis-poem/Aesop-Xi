@@ -1,6 +1,6 @@
 # Phone hooks
 
-Sources live in `aesop-xi/deploy/phone/hooks/`. Live copies are in `~/.claude/hooks/` and `~/.config/git/hooks/`. Rules registry: `~/.claude/ENFORCEMENTS.md`.
+Sources live in `aesop-xi/hooks/`. Live copies are in `~/.claude/hooks/` and `~/.config/git/hooks/`. Rules registry: `~/.claude/ENFORCEMENTS.md`.
 
 | File | Event | What it does |
 |---|---|---|

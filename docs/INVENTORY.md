@@ -4,7 +4,7 @@ Audited 2026-10-01 (read-only: syntax checks and code reads, nothing executed). 
 - Device scripts, git hooks, ~/bin: `~/.claude/session-work/2026-10-01/inventory-code.md` (~57 rows)
 - Vault scripts: `~/.claude/session-work/2026-10-01/inventory-vault-scripts.md` (74 rows)
 - Skills: `~/.claude/session-work/2026-10-01/inventory-skills.md` (61 skills)
-- Live Claude hooks: `~/.claude/hooks/README.md` (also `aesop-xi/deploy/phone/hooks/`)
+- Live Claude hooks: `~/.claude/hooks/README.md` (also `aesop-xi/hooks/`)
 
 ## Rule
 Before writing a new hook, script, skill or tool: search these tables for one that already does the job, overlaps it, or that the new one would break. Reuse or fix it first. Add a row here when something new is created.

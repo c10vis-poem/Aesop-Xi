@@ -13,7 +13,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/deploy/phone/hooks/run-hook.sh\" context-diff.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" context-diff.sh",
             "timeout": 10
           }
         ]
@@ -22,7 +22,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/deploy/phone/hooks/run-hook.sh\" housekeeping-check.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" housekeeping-check.sh",
             "timeout": 10
           }
         ]
@@ -58,7 +58,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/deploy/phone/hooks/run-hook.sh\" session-ledger.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" session-ledger.sh",
             "timeout": 10
           }
         ]
@@ -69,12 +69,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/deploy/phone/hooks/run-hook.sh\" archive-scratchpad.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" archive-scratchpad.sh",
             "timeout": 60
           },
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/deploy/phone/hooks/run-hook.sh\" ship-session.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" ship-session.sh",
             "timeout": 30
           }
         ]
@@ -85,7 +85,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/deploy/phone/hooks/run-hook.sh\" archive-scratchpad.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" archive-scratchpad.sh",
             "timeout": 60
           }
         ]
@@ -97,7 +97,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/deploy/phone/hooks/run-hook.sh\" resume-gate.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" resume-gate.sh",
             "timeout": 10
           }
         ]
@@ -107,7 +107,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/deploy/phone/hooks/run-hook.sh\" checkin-gate.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" checkin-gate.sh"
           }
         ]
       },
@@ -116,7 +116,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/deploy/phone/hooks/run-hook.sh\" secret-guard.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" secret-guard.sh",
             "timeout": 10
           }
         ]
@@ -126,7 +126,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/deploy/phone/hooks/run-hook.sh\" enforce-gate.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" enforce-gate.sh",
             "timeout": 10
           }
         ]
@@ -136,7 +136,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/deploy/phone/hooks/run-hook.sh\" sync-on-use.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" sync-on-use.sh",
             "timeout": 10
           }
         ]
@@ -146,7 +146,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/deploy/phone/hooks/run-hook.sh\" git-gate.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" git-gate.sh",
             "timeout": 10
           }
         ]
@@ -156,7 +156,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/deploy/phone/hooks/run-hook.sh\" branch-current-gate.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" branch-current-gate.sh"
           }
         ]
       }
@@ -166,7 +166,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/deploy/phone/hooks/run-hook.sh\" enforce-prompt.sh",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" enforce-prompt.sh",
             "timeout": 10
           }
         ]
@@ -177,7 +177,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/deploy/phone/hooks/run-hook.sh\" stop-gate.sh"
+            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" stop-gate.sh"
           }
         ]
       }
