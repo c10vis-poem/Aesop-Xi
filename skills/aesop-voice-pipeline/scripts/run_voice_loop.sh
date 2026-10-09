@@ -1,6 +1,6 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # Fixed launcher for the aesop real-time voice engine (mic -> VAD -> STT -> TTS -> speaker).
-# Replaces ~/repos/aesop-xi/voice-engine/scripts/run_live.sh, whose own PulseAudio socket
+# Replaces ~/repos/Aesop-Xi/voice-engine/scripts/run_live.sh, whose own PulseAudio socket
 # discovery (`find ... -name "pulse-*"`) never matches a plainly-started daemon, which
 # uses the fixed path .../tmp/pulse/native (no random suffix). Confirmed working
 # end-to-end 2026-08-28 on a Moto Razr Ultra 2025 (Snapdragon, proot-distro debian).
@@ -15,7 +15,7 @@
 
 set -euo pipefail
 
-AESOP_SCRIPT="/root/repos/aesop-xi/voice-engine/scripts/live_voice_loop.py"
+AESOP_SCRIPT="/root/repos/Aesop-Xi/voice-engine/scripts/live_voice_loop.py"
 
 log() { echo "[run_voice_loop] $*"; }
 

@@ -4,7 +4,7 @@
 - Branches `hooks-to-top-level` (hooks moved to `hooks/`; H2 blocking sync, change-log + /ok push, H8 ci-ready, documents-guard merged) and `raw-condensed` ship at wrap-up (workstream 3/4).
 - PR #18 (orchestration contract) stays open for the grill; #33 gets closed.
 - Fix: `hooks/tests/test-ship-v2.sh` fails 14/18 on main too. H8: compare required check names with real job names.
-- Last of workstream 4: rename the repo to `Aesop-Xi` and every hook path that points at `~/repos/aesop-xi`.
+- Last of workstream 4: rename the repo to `Aesop-Xi` and every hook path that points at `~/repos/Aesop-Xi`.
 Full plan, run as parallel subagent workstreams: vault `NovAExorpus/RESUME.md` START HERE.
 
 Repository: `aesop-xi` (orchestration repo)

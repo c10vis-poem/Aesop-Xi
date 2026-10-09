@@ -1,5 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# H7 classifier. Contract: aesop-xi/protocol/classify.md
+# H7 classifier. Contract: Aesop-Xi/protocol/classify.md
 # stdin:  {"prompt": "...", "cwd": "...", "loaded_skills": ["..."]}
 # stdout: {"backend": "...", "required": [{"id","require","scope"}]}
 # Backend: $CLASSIFY_URL (POST, 2 s timeout) if set and it answers with valid JSON,
