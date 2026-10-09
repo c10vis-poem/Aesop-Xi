@@ -16,6 +16,7 @@ Sources live in `aesop-xi/hooks/`. Live copies are in `~/.claude/hooks/` and `~/
 | `context-diff.sh` | SessionStart | shows CLAUDE.md / MEMORY.md lines changed since the last session |
 | `housekeeping-check.sh` | SessionStart | "HOUSEKEEPING DUE" when PENDING.md `last-housekeeping` is 7+ days old or it's the end of the week |
 | `ship-session.sh` | SessionEnd | ships only repos this session touched, only files changed this session: branch → commit (gitleaks) → PR → auto-merge; writes `## Shipped` into the recap |
+| `vault-ship.sh` (+ `~/bin/vault-ship`) | wrap-up (from ship-session) or by hand | uploads the vault (replaces GitSync's upload): merges what GitHub has, commits, pushes `vault-sync`, opens the PR to `main` with auto-merge. `--dry-run` previews. Never switches branches; stops on empty git objects; restores files emptied by failed writes |
 | `archive-scratchpad.sh` | SessionEnd / PreCompact | copies the session scratchpad to `~/.claude/scratchpad-archive/` |
 | `stop-gate.sh` (H1 Stop) | Stop | turn can't end until RESUME was read, every RESUME "START HERE" item has a status (`~/bin/resume-item <n> done\|blocked "<note>"`), task-observer loaded + session-start scan written, no ENFORCEMENTS pending. `#skip-enforce` skips (logged). |
 | `run-hook.sh` | (launcher) | aesop-xi `.claude/settings.json` registers every hook above through this, so any session started in aesop-xi gets H1–H7 on any device. Stands down when `~/.claude/hooks/<name>` exists (global copy already fires), so nothing runs twice. |
