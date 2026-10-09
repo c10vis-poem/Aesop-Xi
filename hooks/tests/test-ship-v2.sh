@@ -1,8 +1,8 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# ship-session.v2.sh end-to-end: local bare remotes, stub gh (PR OPEN for 2 views, then MERGED;
+# ship-session.sh end-to-end: local bare remotes, stub gh (PR OPEN for 2 views, then MERGED;
 # head $GH_STUCK stays OPEN forever), fake vault. Global gitleaks git hooks run for real.
 source "$(dirname "$0")/lib.sh"
-V2=$HOOKS/ship-session.v2.sh
+V2=$HOOKS/ship-session.sh
 SID=33333333-aaaa-bbbb-cccc-000000000000
 S="session/$(date +%F)-33333333"
 export GHT=$T GH_STUCK=topic/two POLL_MAX=6 POLL_SECS=1
@@ -16,6 +16,7 @@ case "$1 $2" in
     n=$(( $(ls "$GHT/ghpr" | grep -c '\.head$') + 1 ))
     echo "$head" > "$GHT/ghpr/$n.head"; pwd > "$GHT/ghpr/$n.dir"
     echo "https://github.com/stub/repo/pull/$n" ;;
+  "api repos/"*) case "$*" in *actions/workflows*|*required_status_checks*) echo 1;; esac ;;   # ci-ready.sh: CI + required checks present
   "pr view")
     n=${3##*/}; head=$(cat "$GHT/ghpr/$n.head"); c=$(( $(cat "$GHT/ghpr/$n.c" 2>/dev/null || echo 0) + 1 ))
     echo $c > "$GHT/ghpr/$n.c"
@@ -81,6 +82,7 @@ check "recap sections" '[ "$(grep "^## " "$L" | tr "\n" "|")" = "## Repos touche
 SID=44444444-aaaa-bbbb-cccc-000000000000
 ledger "$(bash_ev 'ls' "$VAULT")"; touch -d '-1 minute' "$STATE_DIR/session-$SID.start"
 printf "# RESUME\n\n## %s\n" "$(date +%F)" > "$VAULT/RESUME.md"; ledger "$(write_ev "$VAULT/RESUME.md")"
+echo stale-hash > "$STATE_DIR/resume-$SID.ok"   # resume-gate stores the start-of-session hash
 bash "$V2" --worker "$SID" >> "$SHIP_LOG" 2>&1
 check "RESUME rewritten -> recap + flag ok" 'grep -qx "RESUME: rewritten" "$VAULT"/_recaps/*-44444444.md && [ "$(cat "$STATE_DIR/last-session-resume.flag")" = ok ]'
 finish

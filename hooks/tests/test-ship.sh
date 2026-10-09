@@ -5,6 +5,7 @@ SID=22222222-aaaa-bbbb-cccc-000000000000
 B="session/$(date +%F)-22222222"
 for r in ra rb rs rn; do mkrepo $r; done
 W=$T/work
+export POLL_MAX=2 POLL_SECS=1   # stub gh never reports MERGED; do not wait the default 600 s
 
 # Pre-existing state (before the session): dirty tracked file + untracked file in ra, dirty file in rb.
 echo pre >> "$W/ra/b.txt"; echo old > "$W/ra/old.txt"; echo pre >> "$W/rb/a.txt"
@@ -54,8 +55,8 @@ check "vault skipped" 'grep -q "/vault: skipped: vault (GitSync)" "$L"'
 # gh: one create + one merge, for ra's PR only.
 check "gh: single pr create for ra branch" '[ "$(grep -c "^pr create" "$T/gh.log")" = 1 ] && grep -q -- "--head $B" "$T/gh.log"'
 check "gh: PR body ends with Claude Code line" 'grep -q "Generated with \[Claude Code\](https://claude.com/claude-code)" "$T/gh.log"'
-check "gh: auto-merge only that PR" '[ "$(grep -c "^pr merge" "$T/gh.log")" = 1 ] && grep -qx "pr merge https://github.com/stub/repo/pull/1 --auto --squash" "$T/gh.log"'
-check "recap: Shipped has ra branch/sha/PR/auto-merge on" 'grep -qE "/ra: branch $B, commit [0-9a-f]+, PR https://github.com/stub/repo/pull/1, auto-merge on" "$L"'
+check "gh: auto-merge only that PR" '[ "$(grep -c "^pr merge" "$T/gh.log")" = 1 ] && grep -qx "pr merge https://github.com/stub/repo/pull/1 --auto --squash --delete-branch" "$T/gh.log"'
+check "recap: Shipped has ra branch/sha/PR/auto-merge on" 'grep -qE "/ra: branch $B, PR https://github.com/stub/repo/pull/1, auto-merge on" "$L"'
 check "recap: all sections" '[ "$(grep "^## " "$L" | tr "\n" "|")" = "## Repos touched|## Files written|## Git actions|## Shipped|## Title|" ]'
 check "recap: title from transcript" 'grep -qx "Test session title" "$L"'
 finish

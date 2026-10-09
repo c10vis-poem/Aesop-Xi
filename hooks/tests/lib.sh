@@ -3,6 +3,7 @@
 HOOKS=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 T=$(mktemp -d "$HOOKS/tests/tmp.XXXXXX")
 trap 'rm -rf "$T"' EXIT
+export RECAPS_REPO=$T/no-recaps-repo REPOS_DIR=$T/repos
 export VAULT=$T/vault STATE_DIR=$T/state PROJECTS_DIR=$T/projects SHIP_LOG=$T/ship.log
 export ORIGIN_RE="^$T/remotes/"
 export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.invalid GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
@@ -11,6 +12,7 @@ cat > "$T/bin/gh" <<EOF
 #!/data/data/com.termux/files/usr/bin/bash
 echo "\$*" >> "$T/gh.log"
 [ "\$1 \$2" = "pr create" ] && echo "https://github.com/stub/repo/pull/1"
+case "\$*" in api\ repos/*actions/workflows*|api\ repos/*required_status_checks*) echo 1;; esac   # ci-ready.sh: CI + required checks
 exit 0
 EOF
 chmod +x "$T/bin/gh"; export PATH="$T/bin:$PATH"
