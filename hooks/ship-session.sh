@@ -172,6 +172,8 @@ vault_realign() {
 }
 
 while IFS= read -r top; do ship_repo "$top" </dev/null; done < <(section 'Repos touched')
+# upload the vault first (vault-ship replaces GitSync's upload); then the vault-sync -> main PR
+if [ -z "$dry" ]; then lines+=("- vault: $(bash "$(dirname "$0")/vault-ship.sh" 2>&1 | tail -1)"); fi
 vault_step
 
 if [ -n "$dry" ]; then printf '%s\n' "${lines[@]}"; echo "RESUME: $resume"; exit 0; fi
