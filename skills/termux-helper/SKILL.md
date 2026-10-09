@@ -113,7 +113,7 @@ and the objections never to raise.** Summary below.
      (e.g. layers 0–24 / 25–48: `D=HTP0,HTP1 … --n-gpu-layers 49`). Bigger
      models need three domains or CPU offload.
    - GenieX modes are `--device hybrid` (the default), `npu`, `gpu` and `cpu`.
-   - Docs: `~/repos/aesop-xi/HTP/HTP-Memory-Architecture-and-runtime-splitting (1).txt`
+   - Docs: `~/repos/Aesop-Xi/HTP/HTP-Memory-Architecture-and-runtime-splitting (1).txt`
      and `~/storage/shared/Documents/NovAExorpus/HTP/`. They come from the Qualcomm docs on the
      device: vault `QAIRT-QNN/` and `02_wiki_md/vendors/qualcomm/`.
 2. **Precompiled QAIRT/GENIE contexts** (QAI Hub or LiteRT `.bin`), served by
@@ -194,7 +194,7 @@ is not optional.
 
 ```bash
 pkg install termux-services      # then fully restart Termux
-bash ~/repos/aesop-xi/deploy/phone/daemons/install-daemons.sh
+bash ~/repos/Aesop-Xi/deploy/phone/daemons/install-daemons.sh
 sv status llamad aesopd
 ```
 

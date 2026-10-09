@@ -76,7 +76,7 @@ fi
 # not (operator 2026-10-05: AGENTS.md is the only repo instruction file; upstream forks are exempt);
 # the vault PENDING.md must differ from origin/main.
 if [ -f "$st/wrapup-$sid" ]; then
-  base_repos=" NovAExorpus aesop-xi novus-aexenti NovAExopia Hyperion-XI novus-aesc novus-aeyre wiki-admin "
+  base_repos=" NovAExorpus Aesop-Xi NovusAExenti NovAExopia Hyperion-XI AEthX-AEsc CloviX-AEyre wiki-admin "
   start=$(stat -c %Y "$st/resume-$sid.ok" 2>/dev/null || echo 0)   # session start (RESUME read)
   changed() {  # $1 repo top, $2 file: changed this session = differs on disk from origin's default branch
     # (content compare: the vault's index is stale under GitSync), or already shipped: its last commit
