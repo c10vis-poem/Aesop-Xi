@@ -1,10 +1,9 @@
 name: Notify vault
-# When this repo's AGENTS.md or RESUME.md changes on main, ask NovAExorpus to
-# rebuild MASTER-AGENTS.md / MASTER-RESUME.md (its master-files workflow).
+# On every push to main, ask NovAExorpus to refresh its live mirror of this repo
+# (repos/<name>/, built by the vault's master-files workflow).
 on:
   push:
     branches: [main]
-    paths: [AGENTS.md, RESUME.md]
 
 jobs:
   notify:
