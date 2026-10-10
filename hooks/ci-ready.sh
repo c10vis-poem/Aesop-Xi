@@ -17,5 +17,24 @@ if [ "${req:-0}" -eq 0 ] && [ "$(gh api "repos/$slug" --jq .private 2>/dev/null)
   echo "$slug: ${miss[0]}"; exit 1          # only the workflow can be missing here
 fi
 [ "${req:-0}" -gt 0 ] || miss+=("no required status checks on $br")
+# every required check name must be produced by a workflow job (id or name), else the PR blocks forever
+if [ "${req:-0}" -gt 0 ] && [ "${wf:-0}" -gt 0 ]; then
+  names=$({ gh api "repos/$slug/branches/$br/protection/required_status_checks" --jq '(.contexts // []) + [.checks[]?.context] | .[]' 2>/dev/null
+            gh api "repos/$slug/rules/branches/$br" --jq '.[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context' 2>/dev/null; } | sort -u)
+  jobs=$(for p in $(gh api "repos/$slug/actions/workflows" --jq '.workflows[].path' 2>/dev/null); do
+    gh api "repos/$slug/contents/$p?ref=$br" -H 'Accept: application/vnd.github.raw' 2>/dev/null | awk '
+      /^jobs:/ {j=1; next}  j && /^[^ #]/ {j=0}
+      j && /^  [A-Za-z0-9_-]+:/ {id=$1; sub(/:$/,"",id); print id}
+      j && /^    name:/ {n=$0; sub(/^    name:[ ]*/,"",n); gsub(/^["\047]|["\047][ ]*$/,"",n); print n}'
+  done)
+  while IFS= read -r n; do
+    [ -n "$n" ] || continue; short=${n##* / }; hit=0
+    while IFS= read -r j; do
+      [ -n "$j" ] || continue
+      case "$j" in *'${{'*) pre=${j%%'${{'*}; case "$n" in "$pre"*) hit=1;; esac;; *) [ "$j" = "$n" ] || [ "$j" = "$short" ] && hit=1;; esac
+    done <<<"$jobs"
+    [ $hit -eq 1 ] || miss+=("required check '$n' matches no workflow job (job id or name:)")
+  done <<<"$names"
+fi
 [ ${#miss[@]} -eq 0 ] && exit 0
 echo "$slug: $(IFS=';'; echo "${miss[*]}")"; exit 1
