@@ -8,6 +8,10 @@
 #      and committed after the start marker -> push (pre-push gitleaks) -> PR (reuse open one)
 #      -> gh pr merge --auto --squash --delete-branch.
 #   3. poll PR state up to POLL_MAX s; local+remote branch deleted ONLY once state is MERGED.
+#   (also) worktrees are detected independently of the ledger: every ~/repos/.wt-* and every repo under
+#      $REPOS_DIR with 2+ worktrees is shipped like a touched repo (quietly when there is nothing to ship).
+#   (also) the recap is copied to $RECAPS_REPO/recaps/<repo>/ for every repo touched, shipped as the last repo.
+#   (also) a repo with no origin is reported "NO REMOTE, NOT SHIPPED", never silently skipped.
 #   4. append "## Shipped" (+ RESUME: rewritten|NOT REWRITTEN) and "## Title" to the recap;
 #      write $STATE_DIR/last-session-resume.flag (ok | missing <sid8> <date>).
 # Usage: SessionEnd hook (JSON on stdin; detaches) | ship-session.sh --dry-run <session_id>
@@ -19,6 +23,8 @@ ORIGIN_RE=${ORIGIN_RE:-github\.com[:/]c10vis-poem/}
 SHIP_LOG=${SHIP_LOG:-$HOME/.claude/logs/ship-session.log}
 POLL_MAX=${POLL_MAX:-600}
 POLL_SECS=${POLL_SECS:-30}
+REPOS_DIR=${REPOS_DIR:-$HOME/repos}
+RECAPS_REPO=${RECAPS_REPO:-$REPOS_DIR/NvAEx-Recaps}
 SKIP=" "   # none: ECC is parked, not off-limits (2026-10-01)
 
 case $1 in
@@ -126,6 +132,7 @@ ship_repo() { # $1 = repo toplevel
   SEEN_REPOS="${SEEN_REPOS:-} $top"
   case $SKIP in *" ${top##*/} "*) lines+=("- $top: skipped: off-limits"); return;; esac
   url=$(git -C "$top" remote get-url origin 2>/dev/null)
+  [ -n "$url" ] || { lines+=("- $top: NO REMOTE, NOT SHIPPED ($(git -C "$top" status --porcelain 2>/dev/null | wc -l) dirty file(s); create its c10vis-poem GitHub repo and add origin)"); return; }
   [[ $url =~ $ORIGIN_RE ]] || { lines+=("- $top: skipped: origin not a c10vis-poem fork"); return; }
   url=${url%.git}; slug=${url##*[:/]}; url=${url%/*}; slug=${url##*[:/]}/$slug
   cd "$top" || { lines+=("- $top: skipped: missing"); return; }
@@ -171,7 +178,49 @@ vault_realign() {
       && lines+=("- vault: vault-sync fast-forwarded to main ${m:0:7}") || lines+=("- vault: vault-sync fast-forward FAILED (diverged)"); }
 }
 
+main_top() { # $1 = any path inside a repo or worktree -> the main repo's toplevel
+  local c; c=$(git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
+  [ "${c##*/}" = .git ] && echo "${c%/.git}" || echo "$1"
+}
+# Quiet variant for repos the ledger never listed: report only real outcomes, not "nothing to ship".
+ship_extra() {
+  local n=${#lines[@]} nb=${#B_br[@]} i keep=()
+  ship_repo "$1" </dev/null
+  [ ${#B_br[@]} -gt "$nb" ] && return
+  for ((i = n; i < ${#lines[@]}; i++)); do
+    case ${lines[i]} in *": skipped:"*|*": no start marker"*) ;; *) keep+=("${lines[i]}");; esac
+  done
+  lines=("${lines[@]:0:n}" "${keep[@]}")
+}
+# Copy the recap into the recaps repo (one folder per repo touched) on its own branch off origin; it is shipped last.
+copy_recaps() {
+  local names=() t m n wt rdef br
+  while IFS= read -r t; do m=$(main_top "$t") || continue; names+=("${m##*/}"); done < <(section 'Repos touched')
+  [ ${#names[@]} -gt 0 ] || return
+  mapfile -t names < <(printf '%s\n' "${names[@]}" | sort -u)
+  [ -d "$RECAPS_REPO/.git" ] || { lines+=("- recaps: $RECAPS_REPO missing, recap NOT copied"); return; }
+  if [ -n "$dry" ]; then lines+=("- recaps: DRY-RUN: would copy ${ledger##*/} to recaps/{${names[*]}}/ in $RECAPS_REPO"); return; fi
+  git -C "$RECAPS_REPO" fetch -q origin 2>/dev/null
+  rdef=$(git -C "$RECAPS_REPO" symbolic-ref -q --short refs/remotes/origin/HEAD); rdef=${rdef:-origin/main}
+  br="recaps/$date-${sid:0:8}"; wt="$RECAPS_REPO/.wt-recaps-${sid:0:8}"
+  git -C "$RECAPS_REPO" worktree add -q -b "$br" "$wt" "$rdef" 2>/dev/null \
+    || { lines+=("- recaps: cannot create worktree $wt, recap NOT copied"); return; }
+  for n in "${names[@]}"; do mkdir -p "$wt/recaps/$n"; cp "$ledger" "$wt/recaps/$n/${ledger##*/}"; done
+  git -C "$wt" add recaps
+  if git -C "$wt" commit -q -m "recaps: session $date ${sid:0:8}" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" >/dev/null 2>&1; then
+    lines+=("- recaps: copied ${ledger##*/} to recaps/{${names[*]}}/ on $br")
+  else lines+=("- recaps: commit BLOCKED on $br (secret found or commit failed)"); fi
+  git -C "$RECAPS_REPO" worktree remove --force "$wt" 2>/dev/null
+}
+
 while IFS= read -r top; do ship_repo "$top" </dev/null; done < <(section 'Repos touched')
+# Session worktrees the ledger never listed (a worktree entered with git -C or a subagent): detect independently.
+while IFS= read -r top; do ship_extra "$top"; done < <(
+  { for d in "$REPOS_DIR"/.wt-*; do [ -e "$d/.git" ] && main_top "$d"; done
+    for d in "$REPOS_DIR"/*/; do d=${d%/}; [ -d "$d/.git" ] && [ "$(git -C "$d" worktree list 2>/dev/null | wc -l)" -gt 1 ] && echo "$d"; done
+  } | sort -u)
+copy_recaps
+[ -n "$dry" ] || [ ! -d "$RECAPS_REPO/.git" ] || ship_extra "$RECAPS_REPO"
 # upload the vault first (vault-ship replaces GitSync's upload); then the vault-sync -> main PR
 if [ -z "$dry" ]; then lines+=("- vault: $(bash "$(dirname "$0")/vault-ship.sh" 2>&1 | tail -1)"); fi
 vault_step
