@@ -29,7 +29,7 @@ GRANT EXECUTE ON FUNCTION auth.uid() TO brain_app;
 ALTER DATABASE terrestrial_brain SET search_path TO public, extensions;
 SQL
 ok=0; bad=0
-for f in ~/repos/NovA-terrestrial-brain/supabase/migrations/*.sql; do
+for f in ~/repos/NvAEx-terrestrial-brain/supabase/migrations/*.sql; do
   out=$(docker compose exec -T -e PGPASSWORD="$TB_DB_PASSWORD" postgres psql -h 127.0.0.1 -U brain_app -d terrestrial_brain -v ON_ERROR_STOP=1 -q < "$f" 2>&1)
   if [ $? -eq 0 ]; then ok=$((ok+1)); else bad=$((bad+1)); echo "FAIL $(basename $f): $(echo "$out" | grep -m1 -i error | cut -c1-150)"; fi
 done

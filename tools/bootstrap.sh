@@ -40,9 +40,9 @@ for envfile in "$HOME/.mem0/.env" "$HOME/.openwiki/.env" "$HOME/.omniroute/.env"
   fi
 done
 # terrestrial-brain's own env
-if [ -f "$HOME/repos/NovA-terrestrial-brain/local-mcp/.env.local" ]; then
+if [ -f "$HOME/repos/NvAEx-terrestrial-brain/local-mcp/.env.local" ]; then
   set -a
-  . "$HOME/repos/NovA-terrestrial-brain/local-mcp/.env.local"
+  . "$HOME/repos/NvAEx-terrestrial-brain/local-mcp/.env.local"
   set +a
 fi
 
@@ -64,14 +64,14 @@ psql -h localhost -d postgres -tAc "SELECT default_version FROM pg_available_ext
 
 # 3c. terrestrial-brain MCP on 8000
 if ! nc -z localhost 8000 2>/dev/null; then
-  TB_MCP_DIR="$HOME/repos/NovA-terrestrial-brain/supabase/functions/terrestrial-brain-mcp"
+  TB_MCP_DIR="$HOME/repos/NvAEx-terrestrial-brain/supabase/functions/terrestrial-brain-mcp"
   if [ ! -d "$TB_MCP_DIR" ]; then
-    TB_MCP_DIR="/opt/novaxorpus/NovA-terrestrial-brain/supabase/functions/terrestrial-brain-mcp"
+    TB_MCP_DIR="/opt/novaxorpus/NvAEx-terrestrial-brain/supabase/functions/terrestrial-brain-mcp"
   fi
   if [ -d "$TB_MCP_DIR" ] && [ -f "$TB_MCP_DIR/index.ts" ]; then
     log "starting terrestrial-brain MCP"
-    TB_ENV="$HOME/repos/NovA-terrestrial-brain/local-mcp/.env.local"
-    [ -f "$TB_ENV" ] || TB_ENV="/opt/novaxorpus/NovA-terrestrial-brain/local-mcp/.env.local"
+    TB_ENV="$HOME/repos/NvAEx-terrestrial-brain/local-mcp/.env.local"
+    [ -f "$TB_ENV" ] || TB_ENV="/opt/novaxorpus/NvAEx-terrestrial-brain/local-mcp/.env.local"
     if [ -f "$TB_ENV" ]; then
       _MCP_KEY=$(grep MCP_ACCESS_KEY "$TB_ENV" | cut -d= -f2)
       cd "$TB_MCP_DIR"
