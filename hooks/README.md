@@ -19,6 +19,7 @@ Sources live in `aesop-xi/hooks/`. Live copies are in `~/.claude/hooks/` and `~/
 | `vault-ship.sh` (+ `~/bin/vault-ship`) | wrap-up (from ship-session) or by hand | uploads the vault (replaces GitSync's upload): merges what GitHub has, commits, pushes `vault-sync`, opens the PR to `main` with auto-merge. `--dry-run` previews. Never switches branches; stops on empty git objects; restores files emptied by failed writes |
 | `archive-scratchpad.sh` | SessionEnd / PreCompact | copies the session scratchpad to `~/.claude/scratchpad-archive/` |
 | `stop-gate.sh` (H1 Stop) | Stop | turn can't end until RESUME was read, every RESUME "START HERE" item has a status (`~/bin/resume-item <n> done\|blocked "<note>"`), task-observer loaded + session-start scan written, no ENFORCEMENTS pending. `#skip-enforce` skips (logged). |
+| `carryover.sh` (H9, used by the Stop gate) | Stop, `/wrapup` | a START HERE item an earlier session left unfinished can't be deferred again without the operator's reason (`/defer N why: <reason>`); otherwise it has to be finished. Ledger: `~/.claude/state/carryover/<sid>.tsv`. Items match by title (first 40 letters/digits), so keep titles when rewriting RESUME. `carryover.sh list <snapshot>` shows carried items |
 | `run-hook.sh` | (launcher) | aesop-xi `.claude/settings.json` registers every hook above through this, so any session started in aesop-xi gets H1–H7 on any device. Stands down when `~/.claude/hooks/<name>` exists (global copy already fires), so nothing runs twice. |
 
 Operator override for enforcement (user-typed only): `#skip-enforce` in a prompt (logged).
@@ -37,3 +38,4 @@ Operator override for enforcement (user-typed only): `#skip-enforce` in a prompt
 3. Operator replies `/ok 1,3`, `/defer 2`, `/reject 2` (or the `#` forms) to the plan. At the end of the session a bare `/ok` confirms everything as marked: done → confirmed, blocked → deferred. Until then: no changes (checkin-gate).
 4. Agent marks finished items `resume-item <n> done "<evidence>"`; they count only after the operator's `#ok <n>`. `#reject <n>` clears a proposal.
 5. `/wrapup`: every item must be operator-confirmed done or deferred (deferred ones in PENDING.md), RESUME rewritten, session work committed.
+6. An item already carried over from an earlier session can't be deferred again with a plain `/defer N`: finish it, or type `/defer N why: <reason>` (H9).
