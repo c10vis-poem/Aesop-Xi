@@ -12,7 +12,13 @@ cat > "$T/bin/gh" <<EOF
 #!/data/data/com.termux/files/usr/bin/bash
 echo "\$*" >> "$T/gh.log"
 [ "\$1 \$2" = "pr create" ] && echo "https://github.com/stub/repo/pull/1"
-case "\$*" in api\ repos/*actions/workflows*|api\ repos/*required_status_checks*) echo 1;; esac   # ci-ready.sh: CI + required checks
+case "\$*" in
+  api\ repos/*contents/*) printf 'jobs:\n  check:\n    runs-on: x\n' ;;
+  api\ repos/*actions/workflows*workflows\[\]*) echo .github/workflows/ci.yml ;;
+  api\ repos/*actions/workflows*) echo 1 ;;
+  api\ repos/*required_status_checks*length*) echo 1 ;;
+  api\ repos/*required_status_checks*) echo check ;;
+esac   # ci-ready.sh: CI + required check `check` that a job produces
 exit 0
 EOF
 chmod +x "$T/bin/gh"; export PATH="$T/bin:$PATH"
