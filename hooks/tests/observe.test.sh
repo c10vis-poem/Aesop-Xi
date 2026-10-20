@@ -10,7 +10,7 @@ pass=0; fail=0
 ok(){ if [ "$1" = "$2" ]; then pass=$((pass+1)); echo "PASS $3"; else fail=$((fail+1)); echo "FAIL $3 (got $1, want $2)"; fi; }
 E(){ jq -nc --arg e "$1" '{session_id:"S1",hook_event_name:$e}' | jq -c ". + $2" | bash "$S/observe-event.sh"; }
 SG(){ jq -n --arg tp "$tp" --arg c "$T" --argjson a "${1:-false}" '{session_id:"S1",transcript_path:$tp,cwd:$c,stop_hook_active:$a}' | bash "$S/stop-gate.sh" | jq -r .reason; }
-q=$st/observe-queue-S1.tsv; ev(){ grep -c "	$1	" "$q" 2>/dev/null; }
+q=$st/observe-queue-S1.tsv; ev(){ cat "$q" 2>/dev/null | grep -c "	$1	"; }   # 0, not empty, before the queue exists
 
 ok "$(SG | wc -c | tr -d ' ')" 0 "nothing queued -> stop allowed"
 # compaction re-arms
@@ -23,9 +23,12 @@ ok "$(grep -c 'session-start scan again' <<<"$out")" 1 "after compact: old scan 
 skill 2099-01-01T00:00:00.000Z; echo "2099-01-01 00:00 [home] session-start scan: files=1 parsed=1 principles=0" >> "$so/checkpoints.log"
 ok "$(SG | wc -c | tr -d ' ')" 0 "skill + new scan after compact -> stop allowed"
 # friction events
-E PostToolUseFailure '{tool_name:"Bash",tool_input:{},tool_use_id:"t",error:"Exit code 1\nboom"}' >/dev/null; ok "$(ev tool-fail)" 1 "PostToolUseFailure queued"
+E PostToolUseFailure '{tool_name:"Bash",tool_input:{},tool_use_id:"t",error:"Exit code 1\nboom"}' >/dev/null; ok "$(ev tool-fail)" 0 "Bash non-zero exit not queued"
+E PostToolUseFailure '{tool_name:"Bash",tool_input:{},tool_use_id:"t",error:"timed out",is_timeout:true}' >/dev/null; ok "$(ev tool-fail)" 1 "Bash timeout queued"
+E PostToolUseFailure '{tool_name:"Edit",tool_input:{},tool_use_id:"t",error:"old_string not found"}' >/dev/null; ok "$(ev tool-fail)" 2 "Edit failure queued"; sed -i "/old_string not found/d" "$q"   # keep later counts at 5 events
+E PostToolUseFailure '{tool_name:"Read",tool_input:{},tool_use_id:"t",error:"x",is_interrupt:true}' >/dev/null; ok "$(ev tool-fail)" 1 "interrupt not queued"
 E PermissionDenied '{tool_name:"Bash",tool_input:{},tool_use_id:"t",reason:"classifier said no"}' >/dev/null; ok "$(ev denied)" 1 "PermissionDenied queued"
-out=$(E UserPromptSubmit '{prompt:"Why did you delete that?"}'); ok "$(ev correction)" 1 "correction prompt queued"
+out=$(E UserPromptSubmit '{prompt:"That was wrong, put it back"}'); ok "$(ev correction)" 1 "correction prompt queued"
 ok "$(grep -c 'observe-dismiss e' <<<"$out")" 1 "correction prompt -> pointer line"
 E UserPromptSubmit '{prompt:"write a poem about knowledge"}' >/dev/null; ok "$(ev correction)" 1 "ordinary prompt -> not queued"
 E UserPromptSubmit '{prompt:"no, the other file"}' >/dev/null; ok "$(ev correction)" 2 "^no matches"

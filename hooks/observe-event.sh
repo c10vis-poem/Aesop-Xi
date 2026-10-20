@@ -3,7 +3,7 @@
 # SessionStart source=compact: re-arms enforcement (clears satisfied-<sid>.tsv) and records the compaction
 #   (time + scan-line count of checkpoints.log) so stop-gate wants task-observer loaded and a new scan.
 # Friction events go to state/observe-queue-<sid>.tsv: <id> <epoch> <kind> <detail> (tab-separated).
-#   tool-fail (PostToolUseFailure), denied (PermissionDenied), correction (operator prompt matching
+#   tool-fail (PostToolUseFailure; Bash only on timeout), denied (PermissionDenied), correction (operator prompt matching
 #   observe-corrections.txt), block (gate BLOCK lines of the enforce log, imported by `sync <sid>`).
 # stop-gate holds the turn until each has an observation written after it or `observe-dismiss <id> "<why>"`.
 st="$HOME/.claude/state"; mkdir -p "$st"
@@ -32,7 +32,8 @@ case $(jq -r '.hook_event_name // ""' <<<"$in") in
     rm -f "$st/satisfied-$sid.tsv"
     n=$(grep -c 'session-start scan:' "$ck" 2>/dev/null); printf '%s\n%s\n' "$(date -u +%FT%T)" "${n:-0}" > "$st/compact-$sid"
     echo "Context was compacted: keyword requirements are re-armed. Load the task-observer skill again and run its session-start scan (scripts/session-start-scan.sh) before ending the turn." ;;
-  PostToolUseFailure)
+  PostToolUseFailure)   # a Bash non-zero exit is routine (grep no match); only its timeouts count; interrupts never
+    jq -e '.is_interrupt == true or (.tool_name == "Bash" and .is_timeout != true)' <<<"$in" >/dev/null && exit 0
     add tool-fail "$(jq -r '"\(.tool_name): \(.error // "" | split("\n")[0])"' <<<"$in")" >/dev/null ;;
   PermissionDenied)
     add denied "$(jq -r '"\(.tool_name): \(.reason // "")"' <<<"$in")" >/dev/null ;;
