@@ -1,0 +1,14 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# observe-dismiss <id> "<reason>"   close a queued friction event without an observation (stop-gate accepts it)
+# observe-dismiss list              the session's friction events, open or dismissed
+# Session id: $CLAUDE_CODE_SESSION_ID, else the newest observe-queue-*.tsv in ~/.claude/state.
+st="$HOME/.claude/state"
+sid=${CLAUDE_CODE_SESSION_ID:-$(ls -t "$st"/observe-queue-*.tsv 2>/dev/null | head -1 | sed 's|.*/observe-queue-||; s|\.tsv$||')}
+q="$st/observe-queue-$sid.tsv"
+[ -n "$sid" ] && [ -f "$q" ] || { echo "no friction event queue for session ${sid:-?}" >&2; exit 1; }
+case ${1:-} in
+  list) awk -F'\t' '$1=="dismiss"{d[$2]=$3;next} {o[++n]=$1; l[$1]=$1"  "strftime("%F %T",$2)"  "$3": "$4}
+          END{for(i=1;i<=n;i++) print l[o[i]] "  [" (o[i] in d ? "dismissed: " d[o[i]] : "open") "]"}' "$q" ;;
+  *) [ $# -eq 2 ] && [[ $1 =~ ^e[0-9]+$ ]] && [ -n "$2" ] && grep -q "^$1	" "$q" || { sed -n 2,3p "$0" >&2; exit 1; }
+     printf 'dismiss\t%s\t%s\n' "$1" "$(tr '\t\n' '  ' <<<"$2")" >> "$q"; echo "dismissed $1: $2" ;;
+esac

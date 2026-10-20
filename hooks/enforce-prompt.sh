@@ -55,6 +55,7 @@ out=$(jq -n --arg p "$prompt" --arg c "$cwd" --rawfile l "$loaded" \
   '{prompt:$p, cwd:$c, loaded_skills:($l|split("\n")|map(select(length>0)))}' | bash "$H/classify.sh" 2>/dev/null)
 jq -r '.required[]? | [.id, .require, .scope] | @tsv' <<<"$out" 2>/dev/null | while IFS=$'\t' read -r id r scope; do
   [ "$scope" = session ] && grep -qxF "$r" "$done_" && continue
+  [ -n "$first" ] && { [ "$r" = "skill: $first" ] || [ "$r" = "skill: ${first##*:}" ]; } && continue   # /skill typed in this prompt
   printf '%s\t%s\t%s\n' "$id" "$r" "$scope" >> "$req"
 done
 
