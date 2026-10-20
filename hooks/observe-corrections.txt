@@ -1,0 +1,10 @@
+# Operator-correction patterns for observe-event.sh (UserPromptSubmit): one extended regex per line,
+# matched case-insensitively against the whole prompt. A match queues a friction event that stop-gate
+# holds until it is logged as an observation or dismissed (observe-dismiss <id> "<reason>").
+\bwhy\b
+what happened
+^no\b
+\bwrong\b
+\bdidn'?t\b
+\bdid not\b
+\b(fuck|fucking|shit|damn|wtf|ffs)\b
