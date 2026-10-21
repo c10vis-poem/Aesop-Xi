@@ -20,6 +20,8 @@ P "PR done, see /data/data/com.termux/files/usr/tmp/x.output" >/dev/null; ok "$(
 P "push now" >/dev/null; P "<agent-message from=\"x\">edit the hooks and termux</agent-message>" >/dev/null
 ok "$(wc -l < "$T/.claude/state/required-S1.tsv" | tr -d ' ')" 0 "subagent hand-back -> nothing required"
 ok "$([ -f "$T/.claude/state/pushnow-S1" ] && echo kept)" kept "subagent hand-back keeps push now"
+P "why would I want it held" >/dev/null; ok "$([ -f "$T/.claude/state/pushnow-S1" ] && echo kept)" kept "later operator prompt keeps push now"
+P "hold push for now" >/dev/null; ok "$([ -f "$T/.claude/state/pushnow-S1" ] && echo kept || echo gone)" gone "hold push revokes"
 P "write a poem" >/dev/null; ok "$(G Bash '{"command":"ls"}')" 0 "unrelated prompt -> no block"
 P "/task-observer log an observation" >/dev/null; ok "$(G Bash '{"command":"ls"}')" 0 "/skill typed in the prompt satisfies"
 P "another observation" >/dev/null; ok "$(G Bash '{"command":"ls"}')" 2 "observer row re-arms on every matching prompt"
