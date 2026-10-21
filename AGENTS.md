@@ -179,7 +179,7 @@ re-discover these from scratch:
 
 ## Enforcement hooks H1–H7 travel with this repo (2026-10-02)
 
-`.claude/settings.json` registers every phone hook (RESUME/check-in/Stop gates, sync-on-use, ledger, ship-session, secret-guard, ENFORCEMENTS gate, prompt classifier, branch/git gates, context-diff, housekeeping, archive) through `hooks/run-hook.sh`. A session started in this repo gets them on any device; where `~/.claude/hooks/<name>` already exists (this phone) the launcher exits 0 so nothing fires twice. Sources stay in `hooks/` — edit there, copy to `~/.claude/hooks/`.
+`.claude/settings.json` registers every phone hook (RESUME/check-in/Stop gates, sync-on-use, ledger, ship-session, secret-guard, ENFORCEMENTS gate, prompt classifier, branch/git gates, context-diff, housekeeping, archive) through `hooks/run-hook.sh`. A session started in this repo gets them on any device; where `~/.claude/hooks/<name>` already exists (this phone) the launcher exits 0 so nothing fires twice. In cloud sessions (`CLAUDE_CODE_REMOTE=true`, not Termux) the launcher runs only secret-guard, branch-current-gate and context-diff, since the other gates need the phone's vault and state and would block forever there; `AESOP_CLOUD_GATES=1` overrides. Sources stay in `hooks/` — edit there, copy to `~/.claude/hooks/`.
 
 ## Subagents — standing order (operator, 2026-10-01; updated 2026-10-04)
 This is the explicit ask the Agent tool requires; don't wait to be told.
