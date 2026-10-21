@@ -36,7 +36,7 @@ tmux new-window -t "$SESSION" -n "graphify" -c "$HOME/storage/shared/Documents/N
 tmux new-window -t "$SESSION" -n "obsidian" -c "$HOME/storage/shared/Documents/NovAExorpus"
 
 # Window 7: code-review-graph
-tmux new-window -t "$SESSION" -n "crg" -c "$HOME/repos/NovA-code-review-graph"
+tmux new-window -t "$SESSION" -n "crg" -c "$HOME/repos/NvAEx-code-review-graph"
 
 # Window 8: logs / scratch
 tmux new-window -t "$SESSION" -n "logs"

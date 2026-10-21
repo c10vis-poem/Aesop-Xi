@@ -16,7 +16,13 @@ case "$1 $2" in
     n=$(( $(ls "$GHT/ghpr" | grep -c '\.head$') + 1 ))
     echo "$head" > "$GHT/ghpr/$n.head"; pwd > "$GHT/ghpr/$n.dir"
     echo "https://github.com/stub/repo/pull/$n" ;;
-  "api repos/"*) case "$*" in *actions/workflows*|*required_status_checks*) echo 1;; esac ;;   # ci-ready.sh: CI + required checks present
+  "api repos/"*) case "$*" in
+    *contents/*) printf 'jobs:\n  check:\n    runs-on: x\n' ;;
+    *actions/workflows*'workflows[]'*) echo .github/workflows/ci.yml ;;
+    *actions/workflows*) echo 1 ;;
+    *required_status_checks*length*) echo 1 ;;
+    *required_status_checks*) echo check ;;
+  esac ;;   # ci-ready.sh: CI + required check `check` that a job produces
   "pr view")
     n=${3##*/}; head=$(cat "$GHT/ghpr/$n.head"); c=$(( $(cat "$GHT/ghpr/$n.c" 2>/dev/null || echo 0) + 1 ))
     echo $c > "$GHT/ghpr/$n.c"

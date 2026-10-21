@@ -6,6 +6,8 @@ prompt=$(jq -r '.prompt // ""' <<<"$in"); cwd=$(jq -r '.cwd // ""' <<<"$in")
 st="$HOME/.claude/state"; mkdir -p "$st"
 req="$st/required-$sid.tsv"; done_="$st/satisfied-$sid.tsv"; loaded="$st/loaded-$sid.txt"; log="$st/enforce-$sid.log"
 touch "$done_" "$loaded"; : > "$req"
+# Subagent hand-backs arrive as prompts but are not the operator: require nothing, keep "push now".
+grep -qE '<agent-message|<task-notification>|^Another Claude session sent a message' <<<"$prompt" && exit 0
 rm -f "$st/pushnow-$sid"
 lp=$(tr '[:upper:]' '[:lower:]' <<<"$prompt")
 # Wrap-up mode ONLY from the /wrapup command at the start of the prompt (mentions of "wrap up" don't count).
@@ -58,6 +60,7 @@ out=$(jq -n --arg p "$prompt" --arg c "$cwd" --rawfile l "$loaded" \
   '{prompt:$p, cwd:$c, loaded_skills:($l|split("\n")|map(select(length>0)))}' | bash "$H/classify.sh" 2>/dev/null)
 jq -r '.required[]? | [.id, .require, .scope] | @tsv' <<<"$out" 2>/dev/null | while IFS=$'\t' read -r id r scope; do
   [ "$scope" = session ] && grep -qxF "$r" "$done_" && continue
+  [ -n "$first" ] && { [ "$r" = "skill: $first" ] || [ "$r" = "skill: ${first##*:}" ]; } && continue   # /skill typed in this prompt
   printf '%s\t%s\t%s\n' "$id" "$r" "$scope" >> "$req"
 done
 

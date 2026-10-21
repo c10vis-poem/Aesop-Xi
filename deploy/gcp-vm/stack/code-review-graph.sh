@@ -3,7 +3,7 @@
 set -euo pipefail
 command -v uv >/dev/null || { sudo apt-get install -y -qq pipx >/dev/null && pipx install -q uv && export PATH="$HOME/.local/bin:$PATH"; }
 export PATH="$HOME/.local/bin:$PATH"
-uv tool install --force --python 3.12 "git+https://github.com/c10vis-poem/NovA-code-review-graph.git@main" >/dev/null
+uv tool install --force --python 3.12 "git+https://github.com/c10vis-poem/NvAEx-code-review-graph.git@main" >/dev/null
 echo "code-review-graph $(code-review-graph --version 2>/dev/null || echo installed)"
 
 sudo tee /etc/systemd/system/code-review-graph.service >/dev/null <<EOF

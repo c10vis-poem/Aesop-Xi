@@ -5,6 +5,7 @@
 # by "push now" in the current prompt (state/pushnow-<sid>, cleared each prompt).
 in=$(cat); sid=$(jq -r '.session_id // "x"' <<<"$in") || exit 0
 cmd=$(jq -r '.tool_input.command // ""' <<<"$in")
+cmd=$(sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g" <<<"$cmd")   # quoted text (commit messages) is not a command
 grep -qE '(^|[;&|[:space:]])(git[[:space:]]+([^;&|]*[[:space:]])?push|gh[[:space:]]+pr[[:space:]]+(create|merge|ready))([[:space:]]|$)' <<<"$cmd" || exit 0
 st="$HOME/.claude/state"
 [ -f "$st/wrapup-$sid" ] || [ -f "$st/pushnow-$sid" ] && exit 0

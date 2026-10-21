@@ -2,11 +2,11 @@
 # Install Terrestrial Brain MCP from the c10vis-poem fork as a systemd service on :8000.
 # Needs the dumbass Postgres (compose.yaml) up and /opt/dumbass/.env present. Safe to re-run.
 set -euo pipefail
-R=~/repos/NovA-terrestrial-brain
+R=~/repos/NvAEx-terrestrial-brain
 E=/opt/dumbass/tb.env
 
 if [ -d "$R/.git" ]; then git -C "$R" pull -q --ff-only; else
-  mkdir -p ~/repos && git clone -q https://github.com/c10vis-poem/NovA-terrestrial-brain.git "$R"; fi
+  mkdir -p ~/repos && git clone -q https://github.com/c10vis-poem/NvAEx-terrestrial-brain.git "$R"; fi
 echo "terrestrial-brain @ $(git -C "$R" log -1 --format='%h %cs')"
 (cd "$R/local-mcp" && npm install --silent --no-audit --no-fund)
 

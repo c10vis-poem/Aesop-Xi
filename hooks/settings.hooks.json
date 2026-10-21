@@ -149,6 +149,16 @@
           }
         ]
       }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/subagent-stop-gate.sh"
+          }
+        ]
+      }
     ]
   }
 }

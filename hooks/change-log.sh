@@ -12,13 +12,13 @@ tool=$(jq -r '.tool_name // ""' <<<"$in"); cwd=$(jq -r '.cwd // ""' <<<"$in")
 ST="$HOME/.claude/state"; LOG="$ST/changes-$sid.log"
 DOCS='(/storage/emulated/0|/sdcard|~/storage/shared|/data/data/com\.termux/files/home/storage/shared|\$HOME/storage/shared)/Documents/'
 where() { # $1 = path or command text
-  local t; t=$(sed -E "s#$DOCS#@@DOCS@@#g; s#Merovingian.s_keep#Merovingian_s_keep#g" <<<"$1")
+  local t; t=$(sed -E "s#$DOCS#@@DOCS@@#g; s#_?Merovingian'?s[_-]keep#KEEP#gI" <<<"$1")
   case $t in
     *@@DOCS@@NovAExorpus/../*|*@@DOCS@@NovAExorpus-*) echo DOCUMENTS; return ;;
   esac
   grep -qE '@@DOCS@@' <<<"$t" && {
-    grep -qvE '@@DOCS@@(NovAExorpus|Merovingian.s_keep)(/|[[:space:]"'"'"']|$)' <(grep -oE '@@DOCS@@[^[:space:]"'"'"']*' <<<"$t") && { echo DOCUMENTS; return; }
-    grep -q '@@DOCS@@Merovingian' <<<"$t" && { echo keep; return; }
+    grep -qvE '@@DOCS@@(NovAExorpus|KEEP)(/|[[:space:]"'"'"']|$)' <(grep -oE '@@DOCS@@[^[:space:]"'"'"']*' <<<"$t") && { echo DOCUMENTS; return; }
+    grep -q '@@DOCS@@KEEP' <<<"$t" && { echo keep; return; }
     echo vault; return; }
   local p; p=$(grep -oE '(/|~/)[^[:space:]"'"'"';|&>]+' <<<"$1" | head -1); p=${p/#\~/$HOME}
   [ -n "$p" ] || p=$cwd
