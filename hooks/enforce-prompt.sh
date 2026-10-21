@@ -8,11 +8,12 @@ req="$st/required-$sid.tsv"; done_="$st/satisfied-$sid.tsv"; loaded="$st/loaded-
 touch "$done_" "$loaded"; : > "$req"
 # Subagent hand-backs arrive as prompts but are not the operator: require nothing, keep "push now".
 grep -qE '<agent-message|<task-notification>|^Another Claude session sent a message' <<<"$prompt" && exit 0
-rm -f "$st/pushnow-$sid"
 lp=$(tr '[:upper:]' '[:lower:]' <<<"$prompt")
 # Wrap-up mode ONLY from the /wrapup command at the start of the prompt (mentions of "wrap up" don't count).
 wrapcmd=; grep -qE '^/wrap-?up([[:space:]]|$)' <<<"$lp" && { touch "$st/wrapup-$sid"; wrapcmd=1; }
+# "push now" lasts for the rest of the session (a later prompt doesn't revoke it); "hold push" / "don't push" does.
 grep -q 'push now' <<<"$lp" && touch "$st/pushnow-$sid"
+grep -qE "hold (the )?push|don'?t push|stop push" <<<"$lp" && rm -f "$st/pushnow-$sid"
 # Operator check-off (sessions with a RESUME snapshot): #ok | #ok 1,3 | #defer 2 | #reject 2.
 # Any mark = checked in. "#ok N" confirms N as done if a done was proposed, else accepts the plan item.
 # Slash forms (/ok, /ok 1,3, /defer 2, /reject 2) at the start of the prompt = the # forms.

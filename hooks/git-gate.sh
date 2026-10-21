@@ -2,7 +2,7 @@
 # PreToolUse (Bash): no push / PR / merge mid-session. Commit on local branches;
 # everything ships at wrap-up (ship-session). Unlocked by wrap-up mode
 # (state/wrapup-<sid>, set when the operator says wrap up / close session) or
-# by "push now" in the current prompt (state/pushnow-<sid>, cleared each prompt).
+# by "push now" (state/pushnow-<sid>; lasts the session, "hold push" revokes).
 in=$(cat); sid=$(jq -r '.session_id // "x"' <<<"$in") || exit 0
 cmd=$(jq -r '.tool_input.command // ""' <<<"$in")
 cmd=$(sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g" <<<"$cmd")   # quoted text (commit messages) is not a command
