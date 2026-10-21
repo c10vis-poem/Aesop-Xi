@@ -172,7 +172,7 @@ echo "[5/9] Cloning repositories..."
 mkdir -p /opt/novaxorpus
 cd /opt/novaxorpus
 
-for repo in OmniRoute NovA-terrestrial-brain aesop-xi NovAExorpus; do
+for repo in OmniRoute NvAEx-terrestrial-brain aesop-xi NovAExorpus; do
   [ -d "$repo" ] || git clone "https://github.com/${GITHUB_ORG}/${repo}.git"
 done
 
@@ -183,7 +183,7 @@ pnpm install --frozen-lockfile 2>/dev/null || npm install
 
 # ---- terrestrial-brain install + migrations ----
 echo "[7/9] Installing terrestrial-brain..."
-cd /opt/novaxorpus/NovA-terrestrial-brain/local-mcp
+cd /opt/novaxorpus/NvAEx-terrestrial-brain/local-mcp
 npm install --ignore-scripts
 
 # Generate MCP access key
@@ -201,7 +201,7 @@ MCP_KEY=$(grep MCP_ACCESS_KEY .env.local | cut -d= -f2)
 # Run migrations
 echo "Running terrestrial-brain migrations..."
 export PGPASSWORD="brain_local_dev"
-for f in /opt/novaxorpus/NovA-terrestrial-brain/supabase/migrations/*.sql; do
+for f in /opt/novaxorpus/NvAEx-terrestrial-brain/supabase/migrations/*.sql; do
   psql -h 127.0.0.1 -U brain_app -d terrestrial_brain -v ON_ERROR_STOP=0 -f "$f" 2>&1 \
     | grep -i error | head -1 | sed "s/^/  WARN: $(basename "$f"): /" || true
 done
@@ -235,7 +235,7 @@ After=network.target postgresql.service
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/novaxorpus/NovA-terrestrial-brain/supabase/functions/terrestrial-brain-mcp
+WorkingDirectory=/opt/novaxorpus/NvAEx-terrestrial-brain/supabase/functions/terrestrial-brain-mcp
 ExecStart=/usr/bin/deno run --allow-net --allow-env --allow-read --allow-write index.ts
 Restart=always
 RestartSec=5

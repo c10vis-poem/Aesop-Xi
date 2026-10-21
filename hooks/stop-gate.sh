@@ -3,6 +3,8 @@
 # checks in; task-observer ran; no ENFORCEMENTS requirement pending. In /wrapup: every START HERE item
 # confirmed done (#ok N) or deferred (#defer N, then in PENDING.md) BY THE OPERATOR; RESUME rewritten;
 # session work committed. Items/statuses come from the session-start RESUME snapshot.
+# Observer: a fresh task-observer scan after a compaction; every friction event (observe-event.sh) logged
+# or dismissed; in /wrapup the weekly review not overdue with open observations, merged parked branches reported.
 in=$(cat); sid=$(jq -r '.session_id // empty' <<<"$in") || exit 0; [ -n "$sid" ] || exit 0
 tp=$(jq -r '.transcript_path // empty' <<<"$in"); cwd=$(jq -r '.cwd // ""' <<<"$in")
 st="$HOME/.claude/state"; log="$st/enforce-$sid.log"; items="$st/resume-items-$sid.tsv"
@@ -48,6 +50,46 @@ if [ -f "$tp" ] && ! jq -e 'select(.type=="assistant") | .message.content[]? | s
   miss+=("Load the task-observer skill and run its Session Start Protocol")
 elif [ -f "$st/resume-$sid.ok" ] && [ ! "$vault/skill-observations/checkpoints.log" -nt "$st/resume-$sid.ok" ]; then
   miss+=("Run the task-observer session-start scan (it appends to skill-observations/checkpoints.log)")
+fi
+
+# After a compaction (observe-event.sh wrote compact-<sid>: UTC time, scan-line count then): task-observer
+# loaded again after it and a new session-start scan line in checkpoints.log
+so="$vault/skill-observations"
+if [ -f "$st/compact-$sid" ]; then
+  { read -r ct; read -r cn; } < "$st/compact-$sid"
+  [ -f "$tp" ] && ! jq -e --arg t "$ct" 'select(.type=="assistant" and (.timestamp // "") > $t) | .message.content[]? | select(.type=="tool_use" and .name=="Skill" and (.input.skill|test("task-observer")))' "$tp" >/dev/null 2>&1 \
+    && miss+=("Context was compacted: load the task-observer skill again and run its Session Start Protocol")
+  [ "$(grep -c 'session-start scan:' "$so/checkpoints.log" 2>/dev/null)" -gt "${cn:-0}" ] 2>/dev/null \
+    || miss+=("Context was compacted: run the task-observer session-start scan again (scripts/session-start-scan.sh appends to skill-observations/checkpoints.log)")
+fi
+
+# Friction events (observe-event.sh queue + gate BLOCK lines imported from the enforce log): each needs an
+# observation file written after it, or a dismissal (observe-dismiss <id> "<reason>").
+bash "$(dirname "$0")/observe-event.sh" sync "$sid"
+newest=$(find "$so/observation-log" -maxdepth 1 -name '[0-9]*.md' -printf '%T@\n' 2>/dev/null | sort -n | tail -1)
+open=$(awk -F'\t' -v nw="${newest%.*}" '$1=="dismiss"{d[$2]=1;next} {o[++n]=$1; e[$1]=$2; s[$1]=$3": "$4}
+  END{for(i=1;i<=n;i++){x=o[i]; if(!(x in d) && e[x]+0>=nw+0) printf "%s\t%s\t%s\n", x, strftime("%H:%M",e[x]), s[x]}}' "$st/observe-queue-$sid.tsv" 2>/dev/null)
+nfr=0; [ -n "$open" ] && nfr=$(wc -l <<<"$open")
+pfr=$(cat "$st/observe-blocked-$sid" 2>/dev/null || echo 0); echo "$nfr" > "$st/observe-blocked-$sid"
+[ "$nfr" -gt 0 ] && while IFS=$'\t' read -r id t s; do
+  miss+=("Friction event $id ($t, $s): log a task-observer observation about it, or: observe-dismiss $id \"<reason>\"")
+done < <(head -5 <<<"$open")
+[ "$nfr" -gt 5 ] && miss+=("Friction event list: $((nfr-5)) more (observe-dismiss list)")
+
+# Wrap-up mode: close the observer loop. The weekly review is due (last-review-date.txt 7+ days old or
+# never) while observations are open; parked observations waiting on a fork branch that is now merged.
+if [ -f "$st/wrapup-$sid" ]; then
+  lr=$(head -1 "$so/last-review-date.txt" 2>/dev/null | tr -d '[:space:]')
+  nopen=$(grep -lE '^status:[[:space:]]*"?open' "$so"/observation-log/[0-9]*.md 2>/dev/null | wc -l)
+  age=$(( ($(date +%s) - $(date -d "${lr:-never}" +%s 2>/dev/null || echo 0)) / 86400 ))
+  [ "$nopen" -gt 0 ] && [ "$age" -gt 7 ] && miss+=("Wrap-up: the task-observer weekly review is due (last review: ${lr:-never}) and $nopen observation(s) are open — run the review (task-observer skill) before closing")
+  grep -lE '^status:[[:space:]]*"?parked' "$so"/observation-log/[0-9]*.md 2>/dev/null | while read -r f; do
+    sed -nE 's/^parked_until:.*fork branch ([^ "]+) merged into ([^ "]+).*/\1 \2/p' "$f" | while read -r b r; do
+      [ "$(timeout 20 gh pr list -R "c10vis-poem/$r" --state merged --head "$b" --json number --jq length 2>/dev/null)" -gt 0 ] 2>/dev/null \
+        && echo "${f##*/} waits for branch $b merged into $r — it is merged"
+    done
+  done > "$st/parked-merged-$sid.txt"
+  while read -r m; do miss+=("Wrap-up: parked observation $m: report it to the operator and unpark it (status, parked_until)"); done < "$st/parked-merged-$sid.txt"
 fi
 
 # Wrap-up mode: RESUME.md must be rewritten this session (content differs from session start)
@@ -133,6 +175,7 @@ if [ -f "$st/wrapup-$sid" ]; then
     done
     case $why in *": ") ;; *) echo "$why" ;; esac
   done | sort -u > "$st/ci-missing-$sid.txt"
+  [ -n "$rec" ] || : > "$st/ci-missing-$sid.txt"   # no recap: the pipeline above never ran
   while read -r m; do miss+=("Wrap-up: $m — add a CI workflow (gitleaks + tests) and branch protection with required checks (github-project skill) before shipping"); done < "$st/ci-missing-$sid.txt"
 fi
 
@@ -147,9 +190,10 @@ fi
 [ ${#miss[@]} -eq 0 ] && exit 0
 # Items only the operator can close (/ok, /defer) block once, then let the turn end so the operator can
 # type them: re-blocking on stop_hook_active would loop forever with no way for them to answer.
+# Friction events likewise yield once a re-block resolved none of them (no progress: don't loop).
 if [ "$(jq -r '.stop_hook_active // false' <<<"$in")" = true ]; then
-  ops=0; for m in "${miss[@]}"; do case $m in *"needs the operator's /ok"*) ops=$((ops+1)) ;; esac; done   # incl. "/ok push"
-  [ "$ops" -eq ${#miss[@]} ] && { echo "$(date +%T) STOP-YIELD awaiting operator /ok|/defer" >> "$log"; exit 0; }
+  ops=0; for m in "${miss[@]}"; do case $m in *"needs the operator's /ok"*) ops=$((ops+1)) ;; "Friction event"*) [ "$nfr" -ge "$pfr" ] && ops=$((ops+1)) ;; esac; done   # incl. "/ok push"
+  [ "$ops" -eq ${#miss[@]} ] && { echo "$(date +%T) STOP-YIELD awaiting operator /ok|/defer or unresolved friction events" >> "$log"; exit 0; }
 fi
 reason="BLOCKED (stop-gate): not done yet —"; for m in "${miss[@]}"; do reason+=$'\n'"- $m"; done
 echo "$(date +%T) STOP-BLOCK ${#miss[@]} item(s)" >> "$log"
