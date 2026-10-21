@@ -14,6 +14,8 @@ ok "$(G 'git status; gh pr list')" 0 "status/list allowed"
 ok "$(G 'echo git push is blocked')" 2 "mention in text also blocked (fail-safe, accepted)"
 P "ok push now please"; ok "$(G 'git push origin br')" 0 "push now unlocks this prompt"
 P "next thing"; ok "$(G 'git push origin br')" 2 "push now cleared next prompt"
+ok "$(G 'git commit -qam "fix: keep push now flag"')" 0 "push in a commit message is not a push"
+ok "$(G 'git commit -m "x" && git push origin br')" 2 "real push after a quoted message still blocked"
 P "/wrapup"; ok "$(G 'gh pr create')" 0 "/wrapup unlocks"
 P "another prompt"; ok "$(G 'git push')" 0 "wrap-up mode persists for session"
 P2(){ jq -n --arg p "$1" '{session_id:"S1",prompt:$p,cwd:"/"}' | bash "$S/enforce-prompt.sh"; }
