@@ -40,6 +40,9 @@ if [ -f "$st/resume-$sid.snap.md" ]; then
       printf '%s\t%s\t%s\n' "$n" "$v" "$(date +%T)" >> "$st/confirm-$sid.tsv"
     done
   done
+  # Operator's reason for deferring an item again (H9, read by stop-gate): "#defer 3 why: <reason>"
+  sed -nE 's#^[[:space:]]*/defer[[:space:]]#\#defer #; s#.*\#defer[[:space:]]+([0-9]+)[[:space:]]+(why|because):?[[:space:]]+(.+)#\1\t\3#Ip' <<<"$prompt" |
+    while IFS=$'\t' read -r n why; do printf '%s\t%s\t%s\n' "$n" "$why" "$(date +%T)" >> "$st/defer-why-$sid.tsv"; done
 fi
 # Operator keeps a branch from deletion: "#keep-branch <name>" (session-wide list read by ship-session)
 grep -oE '#keep-branch[[:space:]]+[^[:space:]]+' <<<"$prompt" | awk '{print $2}' >> "$st/keep-$sid.txt"

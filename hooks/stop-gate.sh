@@ -27,6 +27,16 @@ if [ -f "$r" ]; then
     [ -f "$st/plan-$sid.txt" ] || [ -f "$st/checkin-$sid" ] || \
       miss+=("Post the START HERE plan to the operator (each item, what you'll do, tools/skills to load), run: resume-item plan, then end the turn for their /ok N / /defer N")
     if [ -f "$st/wrapup-$sid" ]; then   # closing: every item confirmed done or deferred BY THE OPERATOR
+      # H9: an item an earlier session already left unfinished can't be deferred again without the
+      # operator's reason ("#defer N why: <reason>"); otherwise it has to be finished this session.
+      . "$(dirname "$(realpath "$0")")/carryover.sh"
+      co_record "$sid" "$st/resume-$sid.snap.md" "$st/confirm-$sid.tsv"
+      while IFS=$'\t' read -r n title; do
+        [ "$(grep "^$n	" "$st/confirm-$sid.tsv" 2>/dev/null | tail -1 | cut -f2)" = deferred ] || continue
+        c=$(co_prior "$(co_key "$title")" "$sid"); [ "$c" -gt 0 ] || continue
+        grep -q "^$n	." "$st/defer-why-$sid.tsv" 2>/dev/null && continue
+        miss+=("Wrap-up: item $n was already carried over $c time(s) (\"${title:0:40}…\") and can't be deferred again without a reason — finish it (resume-item $n done \"<evidence>\"; it needs the operator's /ok $n), or the operator types: /defer $n why: <reason>")
+      done < <(co_items "$st/resume-$sid.snap.md")
       for n in $(awk '/^#+ .*START HERE/{f=1;next} f&&/^#/{exit} f&&/^[0-9]+\. /{sub(/\..*/,"");print}' "$st/resume-$sid.snap.md"); do
         last=$(grep "^$n	" "$st/confirm-$sid.tsv" 2>/dev/null | tail -1 | cut -f2)
         case $last in
