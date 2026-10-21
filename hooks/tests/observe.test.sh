@@ -31,6 +31,7 @@ E PermissionDenied '{tool_name:"Bash",tool_input:{},tool_use_id:"t",reason:"clas
 out=$(E UserPromptSubmit '{prompt:"That was wrong, put it back"}'); ok "$(ev correction)" 1 "correction prompt queued"
 ok "$(grep -c 'observe-dismiss e' <<<"$out")" 1 "correction prompt -> pointer line"
 E UserPromptSubmit '{prompt:"write a poem about knowledge"}' >/dev/null; ok "$(ev correction)" 1 "ordinary prompt -> not queued"
+E UserPromptSubmit '{prompt:"Another Claude session sent a message:\n<agent-message from=\"x\">the old copy was wrong</agent-message>"}' >/dev/null; ok "$(ev correction)" 1 "subagent hand-back -> not queued"
 E UserPromptSubmit '{prompt:"no, the other file"}' >/dev/null; ok "$(ev correction)" 2 "^no matches"
 printf '%s BLOCK git-gate: git push\n%s STOP-BLOCK 2 item(s)\n' "$(date +%T)" "$(date +%T)" >> "$st/enforce-S1.log"
 out=$(SG); ok "$(ev block)" 1 "gate BLOCK line imported (STOP-BLOCK not)"
