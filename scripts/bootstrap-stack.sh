@@ -11,12 +11,12 @@
 # Harness selection: no separate variable — whichever harness repo(s) are
 # actually attached as siblings get installed, same convention as every
 # other asset below (present = run, absent = skipped, not fatal). Attach
-# ECC-aesop to get ECC; attach NovA-prime-agent to get Prime Agent; attach
+# ECC-aesop to get ECC; attach NvAEx-prime-agent to get Prime Agent; attach
 # both to get both.
 #
 # Usage: bash scripts/bootstrap-stack.sh [base-dir]
 #   base-dir defaults to the directory aesop-xi itself was cloned into — the
-#   directory every sibling repo (ECC-aesop, NovA-prime-agent, NovA-skills,
+#   directory every sibling repo (ECC-aesop, NvAEx-prime-agent, NvAEx-skills,
 #   etc.) is expected alongside. A repo not present in this session is
 #   skipped, not fatal.
 set -uo pipefail
@@ -42,21 +42,21 @@ sync_repo() {
 
 # Known SHARED-ASSET sibling repos only, "<dir-name>:<github-slug>" — HTTPS,
 # no auth needed, every one a public fork. Deliberately excludes harness
-# repos (ECC-aesop, NovA-prime-agent, etc.): every agent benefits from these
+# repos (ECC-aesop, NvAEx-prime-agent, etc.): every agent benefits from these
 # regardless of which harness it uses, so they auto-clone unconditionally.
 # Harness repos stay opt-in (presence-based only, see section 1 below) --
 # auto-cloning ECC-aesop here would install ECC for every agent every
 # session, defeating "not every agent is going to use ECC".
 KNOWN_SIBLINGS="
-NovA-skills:c10vis-poem/NovA-skills
+NvAEx-skills:c10vis-poem/NvAEx-skills
 obsidian-skills:c10vis-poem/obsidian-skills
-NoVa-reverse-skill:c10vis-poem/NoVa-reverse-skill
-NovA-clean-my-ai-harness:c10vis-poem/NovA-clean-my-ai-harness
-NoVa-honey-for-devs:c10vis-poem/NoVa-honey-for-devs
-NovA-code-review-graph:c10vis-poem/NovA-code-review-graph
+NvAEx-reverse-skill:c10vis-poem/NvAEx-reverse-skill
+NvAEx-clean-my-ai-harness:c10vis-poem/NvAEx-clean-my-ai-harness
+NvAEx-honey-for-devs:c10vis-poem/NvAEx-honey-for-devs
+NvAEx-code-review-graph:c10vis-poem/NvAEx-code-review-graph
 notebooklm-py:c10vis-poem/notebooklm-py
 OmniRoute:c10vis-poem/OmniRoute
-NovA-terrestrial-brain:c10vis-poem/NovA-terrestrial-brain
+NvAEx-terrestrial-brain:c10vis-poem/NvAEx-terrestrial-brain
 "
 
 ensure_siblings_cloned() {
@@ -87,25 +87,25 @@ else
   skip "ECC-aesop"
 fi
 
-if [ -d "$BASE_DIR/NovA-prime-agent" ]; then
-  sync_repo "$BASE_DIR/NovA-prime-agent"
-  log "NovA-prime-agent attached — building Prime Agent ..."
-  (cd "$BASE_DIR/NovA-prime-agent" && npm install && npm run build) || log "Prime Agent build failed — see output above"
+if [ -d "$BASE_DIR/NvAEx-prime-agent" ]; then
+  sync_repo "$BASE_DIR/NvAEx-prime-agent"
+  log "NvAEx-prime-agent attached — building Prime Agent ..."
+  (cd "$BASE_DIR/NvAEx-prime-agent" && npm install && npm run build) || log "Prime Agent build failed — see output above"
 else
-  skip "NovA-prime-agent"
+  skip "NvAEx-prime-agent"
 fi
 
 # --- 2. Skill repos: use each repo's own linker where it has one ----------
 mkdir -p "$HOME/.claude/skills" "$HOME/.agents/skills"
 
-if [ -d "$BASE_DIR/NovA-skills" ]; then
-  sync_repo "$BASE_DIR/NovA-skills"
+if [ -d "$BASE_DIR/NvAEx-skills" ]; then
+  sync_repo "$BASE_DIR/NvAEx-skills"
 fi
-if [ -x "$BASE_DIR/NovA-skills/scripts/link-skills.sh" ]; then
-  log "Linking NovA-skills (repo's own script) ..."
-  bash "$BASE_DIR/NovA-skills/scripts/link-skills.sh"
+if [ -x "$BASE_DIR/NvAEx-skills/scripts/link-skills.sh" ]; then
+  log "Linking NvAEx-skills (repo's own script) ..."
+  bash "$BASE_DIR/NvAEx-skills/scripts/link-skills.sh"
 else
-  skip "NovA-skills"
+  skip "NvAEx-skills"
 fi
 
 link_flat_skills_dir() {
@@ -125,39 +125,39 @@ link_flat_skills_dir() {
 }
 link_flat_skills_dir "obsidian-skills"
 
-if [ -d "$BASE_DIR/NoVa-reverse-skill" ]; then
-  sync_repo "$BASE_DIR/NoVa-reverse-skill"
+if [ -d "$BASE_DIR/NvAEx-reverse-skill" ]; then
+  sync_repo "$BASE_DIR/NvAEx-reverse-skill"
 fi
-if [ -f "$BASE_DIR/NoVa-reverse-skill/README_AI.md" ]; then
-  log "NoVa-reverse-skill: refreshing tool index ..."
-  bash "$BASE_DIR/NoVa-reverse-skill/skills/scripts/refresh-tool-index.sh" || log "tool-index refresh failed"
+if [ -f "$BASE_DIR/NvAEx-reverse-skill/README_AI.md" ]; then
+  log "NvAEx-reverse-skill: refreshing tool index ..."
+  bash "$BASE_DIR/NvAEx-reverse-skill/skills/scripts/refresh-tool-index.sh" || log "tool-index refresh failed"
 else
-  skip "NoVa-reverse-skill"
+  skip "NvAEx-reverse-skill"
 fi
 
-if [ -d "$BASE_DIR/NovA-clean-my-ai-harness" ]; then
-  sync_repo "$BASE_DIR/NovA-clean-my-ai-harness"
+if [ -d "$BASE_DIR/NvAEx-clean-my-ai-harness" ]; then
+  sync_repo "$BASE_DIR/NvAEx-clean-my-ai-harness"
 fi
-if [ -f "$BASE_DIR/NovA-clean-my-ai-harness/clean-my-ai-harness-claude.zip" ]; then
+if [ -f "$BASE_DIR/NvAEx-clean-my-ai-harness/clean-my-ai-harness-claude.zip" ]; then
   log "Installing clean-my-ai-harness skill ..."
   rm -rf "$HOME/.claude/skills/clean-my-ai-harness"
   # /tmp isn't writable on Termux (Android has no shared /tmp); use a
   # per-run tmp dir under $TMPDIR (falls back to $PREFIX/tmp, then $HOME/.tmp
   # for a plain Linux box where neither is set).
   CMAH_TMP="$(mktemp -d "${TMPDIR:-${PREFIX:-$HOME}/tmp}/cmah-bootstrap.XXXXXX" 2>/dev/null || mktemp -d)"
-  unzip -oq "$BASE_DIR/NovA-clean-my-ai-harness/clean-my-ai-harness-claude.zip" -d "$CMAH_TMP"
+  unzip -oq "$BASE_DIR/NvAEx-clean-my-ai-harness/clean-my-ai-harness-claude.zip" -d "$CMAH_TMP"
   # Zip extracts flat (SKILL.md, scripts/, references/ at top level) — no
   # claude-edition/ subfolder despite the old assumption here.
   cp -r "$CMAH_TMP" "$HOME/.claude/skills/clean-my-ai-harness"
 else
-  skip "NovA-clean-my-ai-harness"
+  skip "NvAEx-clean-my-ai-harness"
 fi
 
 # --- 3. Honey: real plugin install, then symlink for same-session hot-load
-if [ -d "$BASE_DIR/NoVa-honey-for-devs" ]; then
-  sync_repo "$BASE_DIR/NoVa-honey-for-devs"
+if [ -d "$BASE_DIR/NvAEx-honey-for-devs" ]; then
+  sync_repo "$BASE_DIR/NvAEx-honey-for-devs"
   log "Installing Honey ..."
-  (cd "$BASE_DIR/NoVa-honey-for-devs" && node bin/install.js --only claude --yes) || log "Honey install failed"
+  (cd "$BASE_DIR/NvAEx-honey-for-devs" && node bin/install.js --only claude --yes) || log "Honey install failed"
   HONEY_CACHE=$(find "$HOME/.claude/plugins/cache/greenpt/honey" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort -V | tail -1)
   if [ -n "${HONEY_CACHE:-}" ]; then
     for d in "$HONEY_CACHE"/skills/*/; do
@@ -168,30 +168,30 @@ if [ -d "$BASE_DIR/NoVa-honey-for-devs" ]; then
     done
   fi
 else
-  skip "NoVa-honey-for-devs"
+  skip "NvAEx-honey-for-devs"
 fi
 
 # --- 4. code-review-graph: install, build self, register+build for repos --
-if [ -d "$BASE_DIR/NovA-code-review-graph" ]; then
-  sync_repo "$BASE_DIR/NovA-code-review-graph"
+if [ -d "$BASE_DIR/NvAEx-code-review-graph" ]; then
+  sync_repo "$BASE_DIR/NvAEx-code-review-graph"
   log "Installing code-review-graph ..."
-  (cd "$BASE_DIR/NovA-code-review-graph" && uv sync) || log "code-review-graph install failed"
-  CRG="$BASE_DIR/NovA-code-review-graph/.venv/bin/code-review-graph"
+  (cd "$BASE_DIR/NvAEx-code-review-graph" && uv sync) || log "code-review-graph install failed"
+  CRG="$BASE_DIR/NvAEx-code-review-graph/.venv/bin/code-review-graph"
   if [ -x "$CRG" ]; then
     log "Building code-review-graph's own graph ..."
-    (cd "$BASE_DIR/NovA-code-review-graph" && "$CRG" build) || true
-    if [ -d "$BASE_DIR/NovA-terrestrial-brain" ]; then
-      sync_repo "$BASE_DIR/NovA-terrestrial-brain"
-      log "Registering + building graph for NovA-terrestrial-brain ..."
-      "$CRG" register "$BASE_DIR/NovA-terrestrial-brain" || true
-      (cd "$BASE_DIR/NovA-terrestrial-brain" && "$CRG" build) || true
+    (cd "$BASE_DIR/NvAEx-code-review-graph" && "$CRG" build) || true
+    if [ -d "$BASE_DIR/NvAEx-terrestrial-brain" ]; then
+      sync_repo "$BASE_DIR/NvAEx-terrestrial-brain"
+      log "Registering + building graph for NvAEx-terrestrial-brain ..."
+      "$CRG" register "$BASE_DIR/NvAEx-terrestrial-brain" || true
+      (cd "$BASE_DIR/NvAEx-terrestrial-brain" && "$CRG" build) || true
     fi
     log "Registering + building graph for aesop-xi ..."
     "$CRG" register "$AESOP_ROOT" || true
     (cd "$AESOP_ROOT" && "$CRG" build) || true
   fi
 else
-  skip "NovA-code-review-graph"
+  skip "NvAEx-code-review-graph"
 fi
 
 # --- 5. notebooklm-py: install deps, headless auth via master token -------
@@ -227,20 +227,20 @@ else
   skip "OmniRoute"
 fi
 
-# --- 7. NovA-terrestrial-brain: obsidian plugin + local MCP server --------
-if [ -d "$BASE_DIR/NovA-terrestrial-brain" ]; then
-  sync_repo "$BASE_DIR/NovA-terrestrial-brain"
+# --- 7. NvAEx-terrestrial-brain: obsidian plugin + local MCP server --------
+if [ -d "$BASE_DIR/NvAEx-terrestrial-brain" ]; then
+  sync_repo "$BASE_DIR/NvAEx-terrestrial-brain"
   log "Installing + building terrestrial-brain obsidian plugin ..."
-  (cd "$BASE_DIR/NovA-terrestrial-brain/obsidian-plugin" && npm install && npm run build) || log "obsidian-plugin build failed"
+  (cd "$BASE_DIR/NvAEx-terrestrial-brain/obsidian-plugin" && npm install && npm run build) || log "obsidian-plugin build failed"
   log "Starting terrestrial-brain obsidian plugin dev watcher ..."
-  nohup npm --prefix "$BASE_DIR/NovA-terrestrial-brain/obsidian-plugin" run dev < /dev/null > "$BASE_DIR/NovA-terrestrial-brain/obsidian-plugin/.bootstrap-dev.log" 2>&1 &
+  nohup npm --prefix "$BASE_DIR/NvAEx-terrestrial-brain/obsidian-plugin" run dev < /dev/null > "$BASE_DIR/NvAEx-terrestrial-brain/obsidian-plugin/.bootstrap-dev.log" 2>&1 &
   disown
-  if [ -x "$BASE_DIR/NovA-terrestrial-brain/local-mcp/setup.sh" ]; then
+  if [ -x "$BASE_DIR/NvAEx-terrestrial-brain/local-mcp/setup.sh" ]; then
     log "Standing up terrestrial-brain's local Postgres-backed MCP server ..."
-    bash "$BASE_DIR/NovA-terrestrial-brain/local-mcp/setup.sh" || log "terrestrial-brain local MCP setup failed"
+    bash "$BASE_DIR/NvAEx-terrestrial-brain/local-mcp/setup.sh" || log "terrestrial-brain local MCP setup failed"
   fi
 else
-  skip "NovA-terrestrial-brain"
+  skip "NvAEx-terrestrial-brain"
 fi
 
 cat <<'EOF'
@@ -248,7 +248,7 @@ cat <<'EOF'
 [bootstrap] aesop-xi orchestration done. Harness install status is above —
 each harness installs iff its repo was attached this session. Shared assets
 below are attempted regardless of which harness(es) are attached:
-  - skills: NovA-skills, obsidian-skills, NoVa-reverse-skill, clean-my-ai-harness
+  - skills: NvAEx-skills, obsidian-skills, NvAEx-reverse-skill, clean-my-ai-harness
   - Honey, code-review-graph, notebooklm-py, OmniRoute, terrestrial-brain
 Any repo not cloned in this session was skipped, not fatal — see the
 [bootstrap] lines above for what actually ran vs. was skipped.

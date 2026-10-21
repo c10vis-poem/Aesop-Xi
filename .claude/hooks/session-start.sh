@@ -3,7 +3,7 @@
 # opened here, cloud or local. aesop-xi owns this logic directly (scripts/
 # bootstrap-stack.sh) — it does not reach into any harness's own bootstrap
 # script. Which agent harness(es) get installed is decided purely by which
-# harness repo(s) (ECC-aesop, NovA-prime-agent) are attached as siblings this
+# harness repo(s) (ECC-aesop, NvAEx-prime-agent) are attached as siblings this
 # session — no separate variable to set.
 #
 # Previously gated on CLAUDE_CODE_REMOTE=true (cloud-only). Dropped 2026-09-06

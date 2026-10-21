@@ -96,13 +96,13 @@ OmniRoute @ localhost:20128/mcp     ← single MCP endpoint
 - `tools/continual_harness/` — supervisor loop
 
 Upstream fork trackers stay for sync only (`clovis-mem0-vingiaN`,
-`NovA-terrestrial-brain`, `OmniRoute`, `reasoning-bank`) — operational
+`NvAEx-terrestrial-brain`, `OmniRoute`, `reasoning-bank`) — operational
 code lives here.
 
 **Runtime state (not repo):**
 - Postgres data: `~/pgdata/` on device; migrates to Jetson later
 - Keys: `~/.mem0/.env` (chmod 600), `~/.openwiki/.env`,
-  `~/repos/NovA-terrestrial-brain/local-mcp/.env.local`
+  `~/repos/NvAEx-terrestrial-brain/local-mcp/.env.local`
 - mem0 hosted MCP: `https://mcp.mem0.ai/mcp`; key starts with `m0-`
 - OmniRoute upstream provider: OpenRouter (single, 160+ models via
   `OPENROUTER_API_KEY`)
