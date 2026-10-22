@@ -17,7 +17,8 @@ grep -qE "hold (the )?push|don'?t push|stop push" <<<"$lp" && rm -f "$st/pushnow
 # Operator check-off (sessions with a RESUME snapshot): #ok | #ok 1,3 | #defer 2 | #reject 2.
 # Any mark = checked in. "#ok N" confirms N as done if a done was proposed, else accepts the plan item.
 # Slash forms (/ok, /ok 1,3, /defer 2, /reject 2) at the start of the prompt = the # forms.
-lp=$(sed -E 's#^/(ok|defer|reject)([[:space:]]|$)#\#\1\2#' <<<"$lp")
+# Also mid-prompt after a space ("ok so /ok 1"), and a stray dash before numbers ("/ok -0").
+lp=$(sed -E 's#(^|[[:space:]])/(ok|defer|reject)([[:space:]]|$)#\1\#\2\3#g; s#(\#(ok|defer|reject))[[:space:]]+-([0-9])#\1 \3#g' <<<"$lp")
 # Operator approves the wrap-up change review: "#ok push" / "/ok push" (read by stop-gate and ship-session)
 grep -qE '#ok[[:space:]]+push' <<<"$lp" && touch "$st/pushok-$sid"
 if [ -f "$st/resume-$sid.snap.md" ]; then
@@ -41,10 +42,16 @@ if [ -f "$st/resume-$sid.snap.md" ]; then
       printf '%s\t%s\t%s\n' "$n" "$v" "$(date +%T)" >> "$st/confirm-$sid.tsv"
     done
   done
+  if grep -qE '#(ok|defer|reject)' <<<"$lp"; then
+    if [ -f "$st/checkin-$sid" ]; then echo "CHECK-IN recorded: $(tail -n 5 "$st/confirm-$sid.tsv" 2>/dev/null | cut -f1,2 | tr '\t\n' '= ')"
+    else echo "CHECK-IN NOT recorded: no usable #ok/#defer/#reject mark found"; fi
+  fi
   # Operator's reason for deferring an item again (H9, read by stop-gate): "#defer 3 why: <reason>"
   sed -nE 's#^[[:space:]]*/defer[[:space:]]#\#defer #; s#.*\#defer[[:space:]]+([0-9]+)[[:space:]]+(why|because):?[[:space:]]+(.+)#\1\t\3#Ip' <<<"$prompt" |
     while IFS=$'\t' read -r n why; do printf '%s\t%s\t%s\n' "$n" "$why" "$(date +%T)" >> "$st/defer-why-$sid.tsv"; done
 fi
+grep -qE '(^|[[:space:]])[/#](o|okk|ko|deffer|rejct)([[:space:]]|$)' <<<"$lp" && echo "CHECK-IN NOT recorded: unrecognised mark (use /ok, /defer, /reject)"
+[ -f "$st/resume-$sid.snap.md" ] || ! grep -qE '#(ok|defer|reject)' <<<"$lp" || grep -qE '#ok[[:space:]]+push' <<<"$lp" || echo "CHECK-IN NOT recorded: this session has no RESUME snapshot"
 # Operator keeps a branch from deletion: "#keep-branch <name>" (session-wide list read by ship-session)
 grep -oE '#keep-branch[[:space:]]+[^[:space:]]+' <<<"$prompt" | awk '{print $2}' >> "$st/keep-$sid.txt"
 H=$(dirname "$(realpath "$0")")
