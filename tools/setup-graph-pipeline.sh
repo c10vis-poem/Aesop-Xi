@@ -278,7 +278,7 @@ fi
 [ -d "$VAULT_GRAPHS" ] && ok "vault/Codebase-Graphs/ exists" || fail "vault/Codebase-Graphs/ missing"
 
 # OmniRoute
-curl -sf "http://34.31.112.77:20128/api/monitoring/health" >/dev/null 2>&1 && \
+curl -sf "http://${AESOP_VM_HOST:?set AESOP_VM_HOST to the VM address}:20128/api/monitoring/health" >/dev/null 2>&1 && \
   ok "OmniRoute VM healthy" || fail "OmniRoute VM not responding"
 
 # mem0
