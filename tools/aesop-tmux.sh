@@ -6,6 +6,7 @@ set -euo pipefail
 SESSION="aesop"
 GCLOUD="$HOME/google-cloud-sdk/bin/gcloud"
 VM="omniroute-brain"
+VM_HOST="${AESOP_VM_HOST:?set AESOP_VM_HOST to the VM address}"
 ZONE="us-central1-a"
 AGENT="${1:-claude}"  # pass engine name as arg: claude, deepseek, qwen, hermes
 
@@ -16,11 +17,11 @@ tmux new-session -d -s "$SESSION" -n "$AGENT" -c "$HOME/storage/shared/Documents
 
 # Window 1: OmniRoute health monitor
 tmux new-window -t "$SESSION" -n "omniroute"
-tmux send-keys -t "$SESSION:omniroute" "watch -n 30 'curl -sf http://34.31.112.77:20128/api/monitoring/health 2>/dev/null || echo DOWN'" Enter
+tmux send-keys -t "$SESSION:omniroute" "watch -n 30 'curl -sf http://$VM_HOST:20128/api/monitoring/health 2>/dev/null || echo DOWN'" Enter
 
 # Window 2: Terrestrial Brain monitor
 tmux new-window -t "$SESSION" -n "tb"
-tmux send-keys -t "$SESSION:tb" "watch -n 30 'curl -sf http://34.31.112.77:8000/ 2>/dev/null || echo DOWN'" Enter
+tmux send-keys -t "$SESSION:tb" "watch -n 30 'curl -sf http://$VM_HOST:8000/ 2>/dev/null || echo DOWN'" Enter
 
 # Window 3: mem0 (episodic memory)
 tmux new-window -t "$SESSION" -n "mem0" -c "$HOME/storage/shared/Documents/NovAExorpus"
