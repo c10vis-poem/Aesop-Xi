@@ -75,7 +75,8 @@ OmniRoute @ localhost:20128/mcp     ← single MCP endpoint
 
 **Layer roles:**
 - **mem0** — in-session episodic state, user habits, "what was said 2 min ago"
-- **terrestrial-brain (= OB1)** — structural governed retrieval via MCP
+- **terrestrial-brain** (its own repo, `NovA-terrestrial-brain`: a slimmed-down
+  fork of OB1 with an Obsidian plugin; not OB1 itself) — structural governed retrieval via MCP
   (`knowledge.retrieve`, `knowledge.record`); universal, node-independent
 - **OmniRoute** — the gateway; dynamic-dispatch + local fallback + async
   memory tap; agents never manually pick backends
