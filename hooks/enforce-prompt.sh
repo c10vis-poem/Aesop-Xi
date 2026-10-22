@@ -6,11 +6,14 @@ prompt=$(jq -r '.prompt // ""' <<<"$in"); cwd=$(jq -r '.cwd // ""' <<<"$in")
 st="$HOME/.claude/state"; mkdir -p "$st"
 req="$st/required-$sid.tsv"; done_="$st/satisfied-$sid.tsv"; loaded="$st/loaded-$sid.txt"; log="$st/enforce-$sid.log"
 touch "$done_" "$loaded"; : > "$req"
-rm -f "$st/pushnow-$sid"
+# Subagent hand-backs arrive as prompts but are not the operator: require nothing, keep "push now".
+grep -qE '<agent-message|<task-notification>|^Another Claude session sent a message' <<<"$prompt" && exit 0
 lp=$(tr '[:upper:]' '[:lower:]' <<<"$prompt")
 # Wrap-up mode ONLY from the /wrapup command at the start of the prompt (mentions of "wrap up" don't count).
 wrapcmd=; grep -qE '^/wrap-?up([[:space:]]|$)' <<<"$lp" && { touch "$st/wrapup-$sid"; wrapcmd=1; }
+# "push now" lasts for the rest of the session (a later prompt doesn't revoke it); "hold push" / "don't push" does.
 grep -q 'push now' <<<"$lp" && touch "$st/pushnow-$sid"
+grep -qE "hold (the )?push|don'?t push|stop push" <<<"$lp" && rm -f "$st/pushnow-$sid"
 # Operator check-off (sessions with a RESUME snapshot): #ok | #ok 1,3 | #defer 2 | #reject 2.
 # Any mark = checked in. "#ok N" confirms N as done if a done was proposed, else accepts the plan item.
 # Slash forms (/ok, /ok 1,3, /defer 2, /reject 2) at the start of the prompt = the # forms.
@@ -38,6 +41,9 @@ if [ -f "$st/resume-$sid.snap.md" ]; then
       printf '%s\t%s\t%s\n' "$n" "$v" "$(date +%T)" >> "$st/confirm-$sid.tsv"
     done
   done
+  # Operator's reason for deferring an item again (H9, read by stop-gate): "#defer 3 why: <reason>"
+  sed -nE 's#^[[:space:]]*/defer[[:space:]]#\#defer #; s#.*\#defer[[:space:]]+([0-9]+)[[:space:]]+(why|because):?[[:space:]]+(.+)#\1\t\3#Ip' <<<"$prompt" |
+    while IFS=$'\t' read -r n why; do printf '%s\t%s\t%s\n' "$n" "$why" "$(date +%T)" >> "$st/defer-why-$sid.tsv"; done
 fi
 # Operator keeps a branch from deletion: "#keep-branch <name>" (session-wide list read by ship-session)
 grep -oE '#keep-branch[[:space:]]+[^[:space:]]+' <<<"$prompt" | awk '{print $2}' >> "$st/keep-$sid.txt"
@@ -55,6 +61,7 @@ out=$(jq -n --arg p "$prompt" --arg c "$cwd" --rawfile l "$loaded" \
   '{prompt:$p, cwd:$c, loaded_skills:($l|split("\n")|map(select(length>0)))}' | bash "$H/classify.sh" 2>/dev/null)
 jq -r '.required[]? | [.id, .require, .scope] | @tsv' <<<"$out" 2>/dev/null | while IFS=$'\t' read -r id r scope; do
   [ "$scope" = session ] && grep -qxF "$r" "$done_" && continue
+  [ -n "$first" ] && { [ "$r" = "skill: $first" ] || [ "$r" = "skill: ${first##*:}" ]; } && continue   # /skill typed in this prompt
   printf '%s\t%s\t%s\n' "$id" "$r" "$scope" >> "$req"
 done
 
