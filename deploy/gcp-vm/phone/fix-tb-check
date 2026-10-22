@@ -1,0 +1,5 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# NvAEx-terrestrial-brain main requires a CI check named "check" that no workflow produces,
+# so PR #2 can never merge. Point the rule at the repo's real CI job, "obsidian-plugin".
+gh api -X PATCH repos/c10vis-poem/NvAEx-terrestrial-brain/branches/main/protection/required_status_checks \
+  -F strict=false -f 'contexts[]=obsidian-plugin' -q '"required checks now: " + (.contexts | join(", "))'

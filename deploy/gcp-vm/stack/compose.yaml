@@ -1,0 +1,74 @@
+# D.U.M.B.A.S.S. data services on omniroute-x86. Secrets live in .env (chmod 600, generated on the VM).
+# All ports bind to 127.0.0.1 only; reach them over SSH/Tailscale, never the public IP.
+name: dumbass
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    shm_size: 256mb
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      TB_DB_PASSWORD: ${TB_DB_PASSWORD:?set in .env}
+      MEM0_DB_PASSWORD: ${MEM0_DB_PASSWORD:?set in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -q -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  neo4j:
+    image: neo4j:5-community
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:?set in .env}
+      NEO4J_server_memory_heap_max__size: 1G
+      NEO4J_server_memory_pagecache_size: 512M
+    volumes:
+      - neo4j_data:/data
+    ports:
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:7474 >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  mem0:
+    build:
+      context: ${HOME}/repos/clovis-mem0-vingiaN/server  # c10vis-poem fork; run compose as the user, not sudo
+    restart: unless-stopped
+    env_file: mem0.env
+    command: sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000"
+    volumes:
+      - mem0_history:/app/history
+    ports:
+      - "127.0.0.1:8888:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  mem0-dashboard:
+    build:
+      context: ${HOME}/repos/clovis-mem0-vingiaN/server/dashboard
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://127.0.0.1:8888
+      API_INTERNAL_URL: http://mem0:8000
+      NEXT_PUBLIC_INSTANCE_NAME: Mem0
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - mem0
+
+volumes:
+  postgres_data:
+  neo4j_data:
+  mem0_history:

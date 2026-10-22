@@ -1,0 +1,5 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# Stop the browser chat server started by ai-web and free its memory.
+f="$HOME/.cache/ai-web.pid"
+if [ -f "$f" ] && kill "$(cat "$f")" 2>/dev/null; then echo "stopped"; rm -f "$f"
+else echo "not running"; rm -f "$f"; fi

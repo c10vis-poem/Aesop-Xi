@@ -1,0 +1,15 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# Voice round-trip with your on-device model:
+#   you speak -> Android speech-to-text -> Qwen on the NPU -> answer spoken aloud
+#   talk          one question
+#   talk -l       keep going until you say "stop" (or stay silent)
+loop=""; [ "$1" = "-l" ] && loop=1
+while :; do
+  termux-toast -s "Listening..." 2>/dev/null; termux-vibrate -d 60 2>/dev/null
+  q=$(termux-speech-to-text 2>/dev/null | tr '\n' ' ' | sed 's/ *$//')
+  [ -n "$q" ] || { echo "(heard nothing)"; break; }
+  echo "you: $q"
+  case "$(echo "$q" | tr '[:upper:]' '[:lower:]')" in stop|"stop."|quit|exit) break ;; esac
+  npu-ask -s "$q"
+  [ -n "$loop" ] || break
+done

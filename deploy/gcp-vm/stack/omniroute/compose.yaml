@@ -1,0 +1,57 @@
+# OmniRoute built from the c10vis-poem/NvAEx-OmniRoute fork (not the published image), per upstream
+# docker-compose.selfhost.yml: app + Redis, all ports on 127.0.0.1 only.
+name: omniroute
+
+services:
+  redis:
+    image: docker.io/library/redis:8.6.5-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    command: redis-server --save 60 1 --loglevel warning
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  omniroute:
+    build:
+      context: ${HOME}/repos/NvAEx-OmniRoute  # run `docker compose` as the user, not sudo (sudo makes HOME=/root)
+      target: runner-base
+      args:
+        OMNIROUTE_BUILD_MEMORY_MB: "10240"  # default 6144 OOMs the Next.js build
+        OMNIROUTE_BUILD_WORKERS: "1"
+    image: omniroute-fork:local
+    restart: unless-stopped
+    stop_grace_period: 40s
+    env_file: .env
+    environment:
+      - DATA_DIR=/app/data
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "127.0.0.1:20128:20128"
+      - "127.0.0.1:20129:20129"
+      - "127.0.0.1:20132:20132"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks: [default, dumbass]
+    healthcheck:
+      test: ["CMD", "node", "healthcheck.mjs"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  redis-data:
+
+networks:
+  dumbass:
+    name: dumbass_default  # shared with postgres + mem0 (the dumbass stack)
+    external: true

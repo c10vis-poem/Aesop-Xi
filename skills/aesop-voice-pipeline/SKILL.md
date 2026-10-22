@@ -16,7 +16,7 @@ first.
 Three tested tools in `scripts/`:
 
 - **`run_voice_loop.sh`** — the actual real-time voice engine. Fixed replacement for
-  `~/repos/aesop-xi/voice-engine/scripts/run_live.sh`, whose own PulseAudio socket
+  `~/repos/Aesop-Xi/voice-engine/scripts/run_live.sh`, whose own PulseAudio socket
   discovery never matches a plainly-started daemon. Bakes in both audio-bridge fixes
   automatically (idempotent — safe to re-run).
   - `run_voice_loop.sh --demo` — TTS -> speaker -> STT self-test, no mic. Confirmed:
@@ -47,7 +47,7 @@ error. This is a limitation of the specific quantized export
 (`sherpa-onnx-moonshine-tiny-en-quantized-2026-02-27`) uses sliding-window streaming
 attention specifically to avoid this and is the fix if it recurs. The offline engine
 in `~/bin/vv` has no VAD auto-stop wired in (records until manual stop, 120s cap) —
-`~/repos/aesop-xi/deploy/phone/vad_monitor.py` (Silero VAD tail-mode) was built to solve
+`~/repos/Aesop-Xi/deploy/phone/vad_monitor.py` (Silero VAD tail-mode) was built to solve
 this and was never wired in; its dependency (`onnxruntime`) was also never installed
 in `/root/venv`.
 

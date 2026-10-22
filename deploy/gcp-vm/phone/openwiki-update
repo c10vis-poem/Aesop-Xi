@@ -1,0 +1,15 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# Update OpenWiki from the c10vis-poem/openwiki fork (main) and rebuild for Termux.
+# First time on a new device: git clone git@github.com:c10vis-poem/openwiki.git ~/repos/openwiki
+#   then run this script, then: cd ~/repos/openwiki && npm link
+set -e
+R=~/repos/openwiki
+cd "$R"
+git fetch -q origin
+git checkout -q main
+git pull -q --ff-only origin main
+pnpm install --frozen-lockfile --silent
+pnpm run -s build >/dev/null
+termux-fix-shebang dist/cli/cli.js  # Termux has no /usr/bin/env; each build resets the shebang
+echo "OpenWiki $(node -p "require('./package.json').version") @ $(git log -1 --format='%h %cs')"
+openwiki --help >/dev/null && echo "openwiki command: OK"

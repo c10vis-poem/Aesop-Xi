@@ -183,7 +183,7 @@ See `profiles/` for concrete hardware mappings.
 - Whether Recall and Strategic share one vector backend or stay separate stores.
 - Local embedder choice for the max-privacy tier.
 - Memory sits on T3 (home node) by default in §2's tier table, but T3 doesn't exist
-  yet (no Jetson procured — see `unresolved.md`). Until it does, memory has to
+  yet (no Jetson procured — see `PENDING.md`). Until it does, memory has to
   actually work from T1 (phone) + T4 (cloud) alone; the doc's fallback language
   covers this but the emphasis reads as T3-first, which doesn't match current reality.
 

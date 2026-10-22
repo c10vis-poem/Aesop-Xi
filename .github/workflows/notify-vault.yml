@@ -1,0 +1,18 @@
+name: Notify vault
+# On every push to main, ask NovAExorpus to refresh its live mirror of this repo
+# (repos/<name>/, built by the vault's master-files workflow).
+on:
+  push:
+    branches: [main]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch to NovAExorpus
+        env:
+          GH_TOKEN: ${{ secrets.VAULT_DISPATCH_TOKEN }}
+        run: |
+          gh api repos/c10vis-poem/NovAExorpus/dispatches \
+            -f event_type=base-repo-updated \
+            -f "client_payload[repo]=${{ github.repository }}"

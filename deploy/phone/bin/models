@@ -1,0 +1,13 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# List the local models you can load (GGUF files, plus Qualcomm AI Hub bundles).
+#   models          list everything with size
+# Use a path from this list with:  npu-ask -m <path> "..."   or   ai-web <path>
+for d in "$HOME/downloads" "$HOME/gemma-12b" "$HOME/gemma-e2b" /storage/emulated/0/Documents/Models; do
+  [ -d "$d" ] || continue
+  find "$d" -maxdepth 1 -type f \( -name '*.gguf' -o -name '*geniex*.zip' \) ! -name 'mmproj*' ! -name 'mtp-*' 2>/dev/null
+done | while IFS= read -r f; do
+  printf '%6.1f GB  %s\n' "$(stat -c %s "$f" | awk '{print $1/1073741824}')" "$f"
+done
+echo
+echo "Tip: Q4_0 files run best on the NPU. Files under Documents/Models must be"
+echo "used by full path; *.zip = Qualcomm AI Hub bundle (needs unzip, see guide)."
