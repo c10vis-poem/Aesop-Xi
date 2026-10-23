@@ -111,7 +111,7 @@ This is also the starting point for **Hyperion-OXiLm**: the same GenieX Android 
 
 - **Q4_0 runs best on the NPU.** K-quants (`Q4_K_XL`, `q4_k_m`) and `IQ4_NL` get less NPU help.
 - **The Qwen 3.5 2B GGUF is an AI Hub model.** AI Hub publishes curated GGUFs for llama.cpp alongside its precompiled bundles (`GenieX/docs/en/models/supported.mdx:10`), and GenieX runs it directly on the NPU through its `llama_cpp` runtime. No other model is needed.
-- AI Hub's precompiled `qairt` bundles (`*.zip`, e.g. the Qwen3-VL 4B on the phone) are a second, optional route, not a requirement.
+- AI Hub's precompiled `qairt` bundles (`*.zip`, e.g. `intern3_5_vl_4b` in `Documents/_models/qairt/`; Qwen family is Qwen 3.5 only, no Qwen3-VL) are a second, optional route, not a requirement.
 
 ---
 
