@@ -118,7 +118,7 @@ and the objections never to raise.** Summary below.
      device: vault `QAIRT-QNN/` and `02_wiki_md/vendors/qualcomm/`.
 2. **Precompiled QAIRT/GENIE contexts** (QAI Hub or LiteRT `.bin`), served by
    GenieX or by the app's `ort_engine`. An example on the device:
-   `Documents/Models/qwen3_vl_4b_instruct-geniex_qairt-w4a16-qualcomm_snapdragon_8_elite (2).zip`.
+   `Documents/_models/qairt/8-elite-galaxy/intern3_5_vl_4b-geniex_qairt-w4a16-qualcomm_snapdragon_8_elite_for_galaxy.zip`. Qwen family here is Qwen 3.5 only (multimodal, e.g. Qwen3.5-4B); no Qwen 3 / Qwen3-VL.
 
 Before claiming the NPU is or isn't reachable from Termux, run GenieX with
 `--device npu` on a small GGUF and check the output for HTP execution versus
