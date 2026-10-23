@@ -20,6 +20,8 @@ Operator corrections: prompts matching a line of `~/.claude/hooks/observe-correc
 
 Absence claims: `absence-gate.sh` (Stop) blocks a final answer that says something is "not found / doesn't exist / undefined / no such X" when the turn ran no search. Search local repos, the vault/memory and GitHub, then write "not found by <probes>".
 
+Structural guards (hooks, no table row): `state-guard.sh` (agent can't change `~/.claude/state` enforcement files, obs 0017), `settings-guard.sh` (agent can't change `~/.claude/settings*.json` or `~/.claude.json`), `build-doc-gate.sh` (installs/builds in a checkout wait for its install/build doc to be Read, obs 0005), `agent-type-gate.sh` (no Explore/Plan spawn that must keep a progress file, obs 0023), `delegation-tripwire.sh` (reminder to delegate after more than 6 Bash calls over more than 3 repos in a turn, obs 0028).
+
 Operator override (user-typed only): the operator puts `#skip-enforce` in a prompt to skip enforcement for that one prompt. It gets logged in the recap.
 
 | id | when | require | scope | note | mode |
