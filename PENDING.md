@@ -30,3 +30,9 @@ Durable cross-session backlog. Not rewritten each session — items persist unti
 - **ECC plugin never installed** (`~/repos/ECC-aesop`) — ready-to-go `.claude-plugin/plugin.json`, not active. Deferred.
 - **novus-aeyre PR 6** (memory reference + bootstrap wrapper) queued auto-merge — verify it landed next session.
 - **mem0 CLI plugin API key** was broken from Sep 9–15 (key written to wrong dir). Fixed: key now at `~/.claude/plugins/data/mem0-mem0-plugins/api-key`. Verify with `mem0:status` every session.
+
+## 2026-10-23
+- mem0, OmniRoute, Terrestrial Brain and ECC items above are moot for mem0/OmniRoute/TB (dropped by the operator 2026-10-23).
+- Hook 3 (list newest sessions across all `~/.claude/projects/*` at SessionStart; vault obs 0012): operator undecided, not built.
+- Checks proposed by vault observations 0038-0041: value review before offering deletes; never bundle a turn-off; subagent scope clause or a touched-files check at SubagentStop; encode delete ordering inside commands.
+- `run-hook.sh` cloud allowlist does not include the #76/#77 hooks (left out on purpose; decide whether cloud sessions need them).
