@@ -31,9 +31,14 @@ if [ -f "$st/resume-$sid.snap.md" ]; then
       printf '%s\t%s\t%s\n' "$n" "$v" "$(date +%T)" >> "$st/confirm-$sid.tsv"
     done
   fi
-  grep -oE '#(ok|defer|reject)([[:space:]]+[0-9][0-9, ]*)?' <<<"$lp" | while read -r m rest; do
+  items=" $(awk '/^#+ .*START HERE/{f=1;next} f&&/^#/{exit} f&&/^[0-9]+\. /{sub(/\..*/,"");printf "%s ",$0}' "$st/resume-$sid.snap.md")"
+  before=$(wc -l < "$st/confirm-$sid.tsv" 2>/dev/null || echo 0)
+  # "16. /ok 17. next point": a number followed by "." is the operator's next list label, not an item
+  sed -E 's#(\#(ok|defer|reject))[[:space:]]+[0-9]+\.([[:space:]]|$)#\1\3#g' <<<"$lp" |
+  grep -oE '#(ok|defer|reject)([[:space:]]+[0-9][0-9, ]*)?' | while read -r m rest; do
     touch "$st/checkin-$sid"
     for n in $(tr ',' ' ' <<<"$rest"); do
+      [[ $items == *" $n "* ]] || { echo "CHECK-IN ignored: $n is not a START HERE item"; continue; }
       case $m in
         '#ok') grep -q "^$n	done	" "$st/resume-items-$sid.tsv" 2>/dev/null && v=confirmed-done || v=accepted ;;
         '#defer') v=deferred ;;
@@ -43,7 +48,9 @@ if [ -f "$st/resume-$sid.snap.md" ]; then
     done
   done
   if grep -qE '#(ok|defer|reject)' <<<"$lp"; then
-    if [ -f "$st/checkin-$sid" ]; then echo "CHECK-IN recorded: $(tail -n 5 "$st/confirm-$sid.tsv" 2>/dev/null | cut -f1,2 | tr '\t\n' '= ')"
+    new=$(tail -n +$((before + 1)) "$st/confirm-$sid.tsv" 2>/dev/null | cut -f1,2 | tr '\t\n' '= ')
+    if [ -n "$new" ]; then echo "CHECK-IN recorded: $new"
+    elif [ -f "$st/checkin-$sid" ]; then echo "CHECK-IN recorded: checked in, no item numbers in this prompt"
     else echo "CHECK-IN NOT recorded: no usable #ok/#defer/#reject mark found"; fi
   fi
   # Operator's reason for deferring an item again (H9, read by stop-gate): "#defer 3 why: <reason>"

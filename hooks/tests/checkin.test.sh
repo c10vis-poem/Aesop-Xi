@@ -14,4 +14,10 @@ out=$(P "/defer 2"); ok "$(cut -f1,2 "$st/confirm-S.tsv" | tail -1)" "2	deferred
 rm -f "$st/checkin-S"; out=$(P "/o 0"); ok "$(has 'unrecognised mark' "$out")" yes "typo /o -> told not recorded"
 ok "$([ -f "$st/checkin-S" ] && echo y || echo n)" n "typo creates no check-in"
 out=$(P "see ~/notes/ok later"); ok "$(has 'CHECK-IN' "$out")" no "path containing /ok is not a mark"
+n=$(wc -l < "$st/confirm-S.tsv"); out=$(P "16. /ok 17. Is there a reason
+25. /ok 26. explain")
+ok "$(wc -l < "$st/confirm-S.tsv")" "$n" "list labels after /ok are not items"
+ok "$(has 'CHECK-IN recorded: 1=' "$out")" no "report shows only this prompt's marks"
+out=$(P "/ok 9"); ok "$(has '9 is not a START HERE item' "$out")" yes "unknown item number refused"
+out=$(P "/ok 2"); ok "$(has 'CHECK-IN recorded: 2=accepted' "$out")" yes "real item still recorded"
 echo "$pass passed, $fail failed"; [ "$fail" = 0 ]
