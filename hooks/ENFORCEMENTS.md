@@ -18,6 +18,8 @@ Columns:
 
 Operator corrections: prompts matching a line of `~/.claude/hooks/observe-corrections.txt` (one regex per line) queue a friction event, like gate blocks and tool failures. The Stop gate holds the turn until each one is logged as an observation or dismissed with `observe-dismiss <id> "<reason>"`.
 
+Absence claims: `absence-gate.sh` (Stop) blocks a final answer that says something is "not found / doesn't exist / undefined / no such X" when the turn ran no search. Search local repos, the vault/memory and GitHub, then write "not found by <probes>".
+
 Operator override (user-typed only): the operator puts `#skip-enforce` in a prompt to skip enforcement for that one prompt. It gets logged in the recap.
 
 | id | when | require | scope | note | mode |
