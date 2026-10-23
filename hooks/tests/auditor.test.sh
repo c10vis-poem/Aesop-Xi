@@ -5,6 +5,7 @@ pass=0; fail=0
 ok(){ if [ "$1" = "$2" ]; then pass=$((pass+1)); echo "PASS $3"; else fail=$((fail+1)); echo "FAIL $3 (got $1, want $2)"; fi; }
 cnt(){ jq '[.hooks.Stop[]?.hooks[]? | select(.type=="agent")] | length' "$1"; }
 ok "$(jq -e '.hooks[0] | .type=="agent" and .model=="claude-opus-5-5" and (.prompt|contains("$ARGUMENTS") and contains("stop_hook_active"))' "$S/settings-snippet.json" >/dev/null && echo y)" y "snippet has required keys"
+ok "$(jq -e '.hooks[0].prompt | contains("never Read it without offset and limit") and (contains("Read the tail") | not)' "$S/settings-snippet.json" >/dev/null && echo y)" y "transcript is paged, never read whole"
 export CLAUDE_SETTINGS=$T/settings.json
 echo '{"model":"x","hooks":{"Stop":[{"hooks":[{"type":"command","command":"true"}]}],"PreToolUse":[]}}' > "$CLAUDE_SETTINGS"
 cp "$CLAUDE_SETTINGS" "$T/orig.json"
