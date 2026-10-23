@@ -1,31 +1,25 @@
-# RESUME.md — Session Ledger
+# RESUME.md — Aesop-Xi (orchestration repo)
 
-## Next session (from 2026-10-08, session 34c3e229)
-- Branches `hooks-to-top-level` (hooks moved to `hooks/`; H2 blocking sync, change-log + /ok push, H8 ci-ready, documents-guard merged) and `raw-condensed` ship at wrap-up (workstream 3/4).
-- PR #18 (orchestration contract) stays open for the grill; #33 gets closed.
-- Fix: `hooks/tests/test-ship-v2.sh` fails 14/18 on main too. H8: compare required check names with real job names.
-- Last of workstream 4: rename the repo to `Aesop-Xi` and every hook path that points at `~/repos/Aesop-Xi`.
-Full plan, run as parallel subagent workstreams: vault `NovAExorpus/RESUME.md` START HERE.
-
-Repository: `aesop-xi` (orchestration repo)
-Last session: 2026-10-02 (phone, Claude Code). Full ledger: `~/.claude/session-work/2026-10-02/SESSION-LOG.md`. Master handoff: vault `RESUME.md`.
-
-## WHAT LANDED (branch `feat/npu-serve-model-switching`, ships at /wrapup)
-- `4a0b3a7`, `567d941`: npu-serve model switching (`deploy/phone/geniex-serve/models.json` registry; the request's `model` picks it).
-- `34fb58a`: VLM path. Image input for GGUF + mmproj and for QAIRT VLM bundles. All 6 registry models answered an image correctly. InternVL3.5-4B QAIRT decodes at 15.4–17.1 tok/s (AI Hub S25: 16.0–16.4).
-- `106a296`: npu-serve start script no longer hangs when piped; waits 240 s for big models.
-- `995a7ba`: default model path → `Models/gguf/Qwen3.5-2B-Q4_0.gguf` (the `~/downloads` copy was a byte-identical duplicate, removed).
-- `1627b3f`: H1–H7 attached to this repo (`.claude/settings.json` → `deploy/phone/hooks/run-hook.sh`). Tested: stands down where the global copy exists; otherwise the repo copy runs (secret-guard blocked a hook-skip commit).
-- Wrap-up docs: CLAUDE.md (hook section), MEMORY.md, PENDING.md, this file.
+**Last updated: 2026-10-23** (phone, Claude Code; wrap-up of session 7cb1c8c0, 2026-10-18 to 2026-10-23). Vault-wide plan: `NovAExorpus/RESUME.md` START HERE.
 
 ## STATE
-- Server: `npu-serve <name>` → `http://127.0.0.1:18181/v1`. Guide: vault `docs/NPU-SERVE-USER-GUIDE.md`.
-- Speeds measured on a clock-capped phone; not trustworthy until the caps are explained (vault `docs/NPU-FINDINGS-2026-10-02.md`).
+- **Hooks** (`hooks/`, live copies in `~/.claude/hooks/` on the phone, equal to main): H1-H9, auditor (`hooks/auditor/`, Stop `type: agent`, reads the transcript 8 lines at a time), absence-gate, state-guard, settings-guard, build-doc-gate, agent-type-gate, delegation-tripwire, SubagentStop progress-file gate, observer event enforcement, staged-updates notice. All 22 hook test suites pass at #77. `hooks/README.md` is the table of every hook.
+- **Ship path:** repos ship through `ship-session.sh` (branch, commit, gitleaks, PR, auto-merge); the vault ships through `vault-ship.sh` (commits, pushes `vault-sync`, PR to `main` with auto-merge). ship-session never ships the vault.
+- **No open PRs.** PR #18 (orchestration contract v0.1) merged 2026-10-22.
+- **Dropped by the operator 2026-10-23:** OmniRoute, mem0, Terrestrial Brain, OpenWiki, Qwen3-VL. AGENTS.md runtime-memory sections point to the vault instead.
+- **NPU:** GenieX v0.9.3 proof run 2026-10-23 is recorded in the Æsc repo (`AEthX-AEsc/docs/npu-proof/2026-10-23.md`), not here.
+
+## WHAT LANDED 2026-10-18 to 2026-10-23 (all merged to main)
+- Gates: #53 H9 stop gate refuses re-deferring a carried-over START HERE item; #54 run-hook stands down phone-only gates in cloud sessions; #57 and #61 git-gate (quoted text ignored; "push now" lasts the session, "hold push" revokes); #62 branch-current-gate allows the merge that brings main in; #64 and #67 check-in parsing and reporting; #71 H7 tells a mention from a command.
+- New hooks: #56 observer event enforcement; #59 SubagentStop progress-file gate; #69 staged skill updates surfaced at session start; #72, #74, #75 Stop auditor; #76 absence-gate; #77 state-guard, settings-guard, build-doc-gate, agent-type-gate, delegation-tripwire.
+- Other: #55 and #66 tests; #58 change-log classifies the keep under any spelling; #60 NvAEx- repo names; #63 terrestrial-brain is not OB1; #65 stale VM IP dropped; #68 Kokoro TTS lexicons and WAV via sherpa-onnx; #70 aesopd/llamad token and Origin auth, frame cap, localhost bind; #73 Qwen3-VL dropped as the example model; #78 AGENTS, MEMORY, PENDING for 2026-10-23.
 
 ## NEXT
-1. Add InternVL 2B to models.json (the X Elite bundle ran 27.5 tok/s, prefill 1,528 on this v79 phone; compare with the 8 Elite bundle).
-2. Tool calls in npu-serve; multiple images per message.
-3. NPU restart one model at a time with the operator (vault RESUME START HERE).
+1. Fix `checkin-gate.sh` false positives (vault observation 0042): it blocks the auditor's StructuredOutput and read-only Bash whose quoted arguments contain words like `rm -` or `mv`; each block becomes a friction event the stop gate then demands be cleared. Also `/ok 1-4` recorded only item 1.
+2. Wrap-up gaps (vault observation 0043): WRAP-UP.md step 6 should name `vault-ship` for the vault, and the wrap-up stop gate should refuse while the vault has uncommitted changes or a touched repo has no RESUME/MEMORY update this session.
+3. Checks proposed by vault observations 0038-0041 (see PENDING.md 2026-10-23).
+4. Decide whether cloud sessions need the #76/#77 hooks (`run-hook.sh` allowlist leaves them out on purpose).
+5. npu-serve: tool calls, multiple images per message, InternVL 2B in `models.json` (PENDING.md 2026-10-02).
 
-## Sources read this session (for this repo)
-`deploy/phone/geniex-serve/{shim.c,server.py,models.json}`, `deploy/phone/bin/{npu-serve,npu-ask,ai-web}`, `deploy/phone/hooks/{settings.hooks.json,README.md,stop-gate.sh (head)}`, `.claude/settings.json`, CLAUDE.md (section list + hook grep), MEMORY.md, PENDING.md, the old RESUME.md (first 30 lines). Not read: the rest of CLAUDE.md, `docs/`, `skills/`, `tools/`.
+## Sources read for this file
+This repo's RESUME.md (old), PENDING.md, MEMORY.md (2026-10-01 to 2026-10-23 sections), `hooks/` listing, the merged PR titles #53-#78 (`gh search prs`), `gh pr list --state open` (none). Vault: `RESUME.md`, `~/.claude/hooks/README.md`, observations 0042 and 0043. Not read: AGENTS.md this session, the PR bodies and diffs, `hooks/` sources, `docs/`, `deploy/`, `skills/`, `tools/`.
