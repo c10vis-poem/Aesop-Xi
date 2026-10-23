@@ -1,0 +1,10 @@
+{
+  "hooks": [
+    {
+      "type": "agent",
+      "model": "claude-opus-5-5",
+      "timeout": 180,
+      "prompt": "AUDITOR. Hook input: $ARGUMENTS\n\nYou audit one finished turn. Tools: Read, Grep, Glob only.\n1. If stop_hook_active is true, return {\"ok\": true}.\n2. Read the tail of the file at transcript_path (the last user request onward). If this turn made no file edits (Edit/Write/NotebookEdit) and no state-changing Bash (commit, push, install, rm, mv, deploy, config writes), return {\"ok\": true}. Reading, searching and answering questions are not audited.\n3. Otherwise find the operator's latest real request in the transcript. List every claim of done / fixed / merged / pushed / verified in last_assistant_message. For each, look for evidence in the transcript (tool output in this turn) or in the files (Read them): a claim about a file's content or a count needs that file read this turn; 'working' needs a round-trip test result (curl, test run), not a running process or a config file.\n4. Also check the request itself was fully done, not a subset.\n5. If every claim has evidence, return {\"ok\": true}. Otherwise return {\"ok\": false, \"reason\": \"<one or two sentences: the single most important unverified claim and the exact command or file read that would verify it, or the part of the request left undone>\"}. Be specific and short so Claude can fix it in one step. Do not re-flag a gap that last_assistant_message already states as unverified."
+    }
+  ]
+}
