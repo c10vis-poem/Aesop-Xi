@@ -4,7 +4,7 @@
 Synthesizes speech from text, writes WAV to the given output path.
 
 Requirements (install in Debian proot):
-  pip install sherpa-onnx soundfile numpy
+  pip install sherpa-onnx
   Model: ~/models/kokoro-multi-lang-v1.0/
 """
 
@@ -23,6 +23,12 @@ def synthesize(text, output_path, model_dir, sid=0):
                 voices=os.path.join(model_dir, "voices.bin"),
                 tokens=os.path.join(model_dir, "tokens.txt"),
                 data_dir=os.path.join(model_dir, "espeak-ng-data"),
+                # multi-lang models need the lexicons, or generation fails
+                lexicon=",".join(
+                    os.path.join(model_dir, f)
+                    for f in ("lexicon-us-en.txt", "lexicon-zh.txt")
+                    if os.path.exists(os.path.join(model_dir, f))
+                ),
                 length_scale=1.0,
             ),
             num_threads=4,
@@ -33,9 +39,7 @@ def synthesize(text, output_path, model_dir, sid=0):
     audio = tts.generate(text, sid=sid)
 
     if audio.samples:
-        import soundfile as sf
-
-        sf.write(output_path, audio.samples, audio.sample_rate)
+        sherpa_onnx.write_wave(output_path, audio.samples, audio.sample_rate)
         return True
     return False
 
