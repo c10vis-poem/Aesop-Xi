@@ -26,6 +26,15 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" staged-updates.sh",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "PostToolUse": [
