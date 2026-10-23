@@ -10,7 +10,7 @@ name="$1"; shift
 # AESOP_CLOUD_GATES=1 runs everything anyway.
 if [ "$CLAUDE_CODE_REMOTE" = true ] && [ "$AESOP_CLOUD_GATES" != 1 ]; then
   case $PREFIX in *com.termux*) ;; *)
-    case $name in secret-guard.sh|branch-current-gate.sh|context-diff.sh|absence-gate.sh) ;; *) exit 0 ;; esac ;;
+    case $name in secret-guard.sh|branch-current-gate.sh|context-diff.sh) ;; *) exit 0 ;; esac ;;
   esac
 fi
 exec bash "$(dirname "$0")/$name" "$@"
