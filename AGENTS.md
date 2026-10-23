@@ -51,80 +51,8 @@ every session, no exceptions. (Complements the session-handoff workflow below.)
   formatting, tool and context orchestration, protocols"). The other 6 base
   repos reference this section, they don't duplicate it.
 
-## Runtime memory stack (data plane, canonical here)
-
-**Architecture — one-way routing through OmniRoute:**
-
-```
-[any agent, any harness]
-      │
-      ▼
-OmniRoute @ localhost:20128/mcp     ← single MCP endpoint
-      │
-   ┌──┴────────┬────────────────┐
-   ▼           ▼                ▼
- mem0     terrestrial-brain   local SQLite FTS5
- (hosted) (Postgres+pgvector) (offline fallback)
-      │
-      ▼  async tap on every completion
- mem0 habits + Reasoning Bank failure traces
-                │
-                ▼
-   NovAExorpus/05_episodic_logs/
-```
-
-**Layer roles:**
-- **mem0** — in-session episodic state, user habits, "what was said 2 min ago"
-- **terrestrial-brain** (its own repo, `NovA-terrestrial-brain`: a slimmed-down
-  fork of OB1 with an Obsidian plugin; not OB1 itself) — structural governed retrieval via MCP
-  (`knowledge.retrieve`, `knowledge.record`); universal, node-independent
-- **OmniRoute** — the gateway; dynamic-dispatch + local fallback + async
-  memory tap; agents never manually pick backends
-- **ReasoningBank** — judges each finished task (success/fail) and distils
-  up to 3 lessons, recalled for similar tasks later. Planned as an OmniRoute
-  plugin; not built. No crash recovery.
-- **Continual Harness** — reset-free self-improvement loop (rewrites its own
-  strategy prompt, skills and memory mid-run). No automatic rollback; backups
-  are restored by hand. Scope for us still open; not built.
-
-**Homes on disk (all under aesop-xi):**
-- `skills/omniroute/` — routing config, decay policies, memory-tap rules
-- `skills/mem0/` — mem0 client config, per-project user_id defaults
-- `skills/terrestrial_brain/` — obsidian sync config, ingestion routes
-- `tools/omniroute/` — start/stop scripts, port 20128 bind
-- `tools/reasoning_bank/` — ledger reader/writer; trajectories flush to
-  `NovAExorpus/05_episodic_logs/`
-- `tools/continual_harness/` — supervisor loop
-
-Upstream fork trackers stay for sync only (`clovis-mem0-vingiaN`,
-`NvAEx-terrestrial-brain`, `OmniRoute`, `reasoning-bank`) — operational
-code lives here.
-
-**Runtime state (not repo):**
-- Postgres data: `~/pgdata/` on device; migrates to Jetson later
-- Keys: `~/.mem0/.env` (chmod 600), `~/.openwiki/.env`,
-  `~/repos/NvAEx-terrestrial-brain/local-mcp/.env.local`
-- mem0 hosted MCP: `https://mcp.mem0.ai/mcp`; key starts with `m0-`
-- OmniRoute upstream provider: OpenRouter (single, 160+ models via
-  `OPENROUTER_API_KEY`)
-
-**Bootstrap** — `tools/bootstrap.sh` is canonical. Every other repo's
-`tools/bootstrap.sh` is a thin wrapper that calls this first, then does
-repo-specific post-boot. Idempotent, fast on hot start, loud on failure.
-Runs on session start via AGENTS.md instruction, git post-checkout hook,
-or manual invocation.
-
-**Decisions:**
-- Chose hosted mem0 MCP over self-hosted docker server (Termux can't run
-  Docker; hosted covers cross-device automatically).
-- mem0 pip SDK doesn't install on Termux (grpcio wheel build fails on
-  bionic); use MCP + plugin only. SDK path via proot-Debian if ever needed.
-- Terrestrial-brain runs phone-local NOW (Termux Postgres 18.2 + pgvector
-  v0.8.6 built from source with `MKDIR_P/INSTALL/SHLIB_LINK` overrides);
-  migrates to Jetson later via env var URL swap, no rebuild.
-- OmniRoute → OpenRouter as single upstream, not direct provider APIs.
-- Repo-shape decisions (Novus-Agenti demolish, restructure) deferred to
-  post-grill session.
+## Runtime memory stack: DROPPED (operator, 2026-10-23)
+OmniRoute, mem0, Terrestrial Brain, Reasoning Bank wiring and OpenWiki are not part of the stack. Do not set them up, route through them or test them. Current state for every device and agent: the vault `c10vis-poem/NovAExorpus` (`AGENTS.md` "Start here", `RESUME.md`, `PENDING.md`, `handoff/<date>/`), and the shared rules in its `agents/AGENTS.global.md`.
 
 ## Termux/Android platform gap — the general fix (2026-09-06)
 
@@ -201,15 +129,8 @@ This is the explicit ask the Agent tool requires; don't wait to be told.
   and offer to stop it; its findings survive in the file.
 
 ## Every agent must know
-
-Two things every agent MUST know:
-- **Never call mem0 or terrestrial-brain directly.** All memory access
-  goes through OmniRoute at `localhost:20128/mcp`. OmniRoute dispatches
-  intelligently and taps every response for async writes to mem0 habits +
-  Reasoning Bank traces. Direct calls bypass the observation layer.
-- **Every session starts with `bash tools/bootstrap.sh`** in any repo.
-  Idempotent; hydrates runtime deps (Postgres, OmniRoute, keys, skills)
-  and syncs the repo with origin/main.
+- Read the vault `RESUME.md` and `AGENTS.md` ("Start here") first; they list what is current on any device.
+- Nothing is turned off in any repo or config without the operator naming it. Claude Code settings are operator-owned.
 
 ## Cross-engine compatibility
 
@@ -227,22 +148,9 @@ Testing-derived rules:
   active in the same repo directory at the same time** — running two
   simultaneously causes git-lock and file-write races.
 
-## Hook conventions per engine
-
-- **Claude Code**: hooks live in `~/.claude/hooks/` (device-local); sourced
-  from `aesop-xi/skills/omniroute/hooks/claude-code/`. `PreToolUse` queries
-  OmniRoute for relevant memories; `PostToolUse` writes trajectories.
-- **Codex**: hooks live in `~/.codex/hooks/`; sourced from
-  `aesop-xi/skills/omniroute/hooks/codex/`. Same signal points, different
-  hook API.
-- **dsh (DeepSeek Harness)**: Cordis plugin under
-  `aesop-xi/skills/omniroute/hooks/dsh/`; installed via `cordis add`.
-- **Prime Agent / Hermes / other**: shape TBD; capture per-harness plugin
-  layer as we identify them.
-
-Source: operator-confirmed 2026-09-15; cross-linked in
-`~/.claude/CLAUDE.md` on the operator's device and in the
-`gh-workflow-convention` memory entry.
+## Hook conventions
+- **Claude Code (phone):** sources in `hooks/` here (see `hooks/README.md`), live copies in `~/.claude/hooks/`, registered in `~/.claude/settings.json` by the operator.
+- Other engines (Codex, dsh, Hermes): no hooks wired yet; they follow the shared rules file.
 
 ## Git workflow — PR required, no direct pushes to main
 
