@@ -24,14 +24,14 @@ if ! command -v sv &>/dev/null; then
 fi
 
 SVDIR="$PREFIX/var/service"
-AESOP="$HOME/aesop"
+AESOP="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
 # ── llamad ──────────────────────────────────────────────────────────
 mkdir -p "$SVDIR/llamad/log"
-cat > "$SVDIR/llamad/run" <<'EOF'
+cat > "$SVDIR/llamad/run" <<EOF
 #!/data/data/com.termux/files/usr/bin/sh
 exec 2>&1
-exec /data/data/com.termux/files/usr/bin/bash "$HOME/aesop/deploy/phone/daemons/llamad-run"
+exec /data/data/com.termux/files/usr/bin/bash "$AESOP/deploy/phone/daemons/llamad-run"
 EOF
 cat > "$SVDIR/llamad/log/run" <<'EOF'
 #!/data/data/com.termux/files/usr/bin/sh
@@ -42,10 +42,11 @@ chmod +x "$SVDIR/llamad/run" "$SVDIR/llamad/log/run"
 
 # ── aesopd ──────────────────────────────────────────────────────────
 mkdir -p "$SVDIR/aesopd/log"
-cat > "$SVDIR/aesopd/run" <<'EOF'
+cat > "$SVDIR/aesopd/run" <<EOF
 #!/data/data/com.termux/files/usr/bin/sh
 exec 2>&1
-exec /data/data/com.termux/files/usr/bin/python3 "$HOME/aesop/deploy/phone/bridge/aesopd.py"
+export AESOP_DIR="$AESOP"
+exec /data/data/com.termux/files/usr/bin/python3 "$AESOP/deploy/phone/bridge/aesopd.py"
 EOF
 cat > "$SVDIR/aesopd/log/run" <<'EOF'
 #!/data/data/com.termux/files/usr/bin/sh

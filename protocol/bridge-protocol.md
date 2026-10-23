@@ -13,9 +13,11 @@ One spec, three planes, four ports. Version 1.
 | 8765 | `aesopd` | **Termux** | **Control/event plane — this spec** | App connects as WebSocket client |
 
 **The one fact everything rests on:** Android sandboxes filesystems, not
-loopback. Every process on the device shares `127.0.0.1`. Termux can't load
-the NPU's vendor libs — but it can HTTP into a daemon that already did
-(`ort_engine`, running in app context). And the app can't run GGML models
+loopback. Every process on the device shares `127.0.0.1`. The NPU is reachable
+by HTTP into a daemon that already holds it (`ort_engine` in app context, or
+GenieX `npu-serve` on 127.0.0.1:18181). llama-server with ggml-hexagon
+currently fails with 0x80000414 and falls back to CPU; GenieX is the working
+NPU path from Termux (see `docs/NPU-ON-DEVICE.md`). And the app can't run GGML models
 without bloating the APK — but it can HTTP into `llamad`. The bridge daemon
 (`aesopd`) is the switchboard that lets either side drive the other and
 streams events to the UI.
@@ -31,8 +33,14 @@ WebSocket, text frames only, one JSON object per frame (RFC 6455; server
 is stdlib-only, no extensions, no compression). Connect:
 
 ```
-ws://127.0.0.1:8765
+ws://127.0.0.1:8765/?token=<bridge token>
 ```
+
+The token is `AESOP_BRIDGE_TOKEN`, or the 0600 file `~/.aesop/bridge-token`
+(generated on first start). It may instead be sent as an `X-Aesop-Token`
+header. A missing or wrong token gets HTTP 401; an `Origin` header that is not
+localhost gets HTTP 403. Frames over 1 MiB close the connection with code
+1009. A message that is not a JSON object gets an `error` reply.
 
 Every message carries:
 

@@ -12,10 +12,16 @@ Topology (all loopback, all on-device):
   http://127.0.0.1:8081          llama-server — Gemma 4 12B IT QAT GGUF (GGML)
   http://127.0.0.1:8091          media daemon — STT/TTS in app context
 
-Why this shape: Termux can't touch the Hexagon NPU (SELinux/vendor libs),
-but loopback is shared device-wide. The app's ort_engine IS the NPU gateway;
-we reach it by HTTP. The Kotlin UI reaches US by WebSocket for streaming
-tokens, voice events, and status. Everyone conspires over localhost.
+Why this shape: loopback is shared device-wide. The app's ort_engine is one
+NPU gateway, reached by HTTP (GenieX npu-serve on 127.0.0.1:18181 is the
+other NPU path; llama-server+ggml-hexagon currently fails with 0x80000414).
+The Kotlin UI reaches US by WebSocket for streaming tokens, voice events,
+and status. Everyone conspires over localhost.
+
+Auth: loopback is shared by every app and browser page, so the upgrade needs
+the bridge token (env AESOP_BRIDGE_TOKEN, else ~/.aesop/bridge-token, created
+0600 on first start) as ?token=... or header X-Aesop-Token, and any Origin
+header must be a localhost origin.
 
 Protocol: newline-free JSON per text frame. Envelope: {"id", "type", ...}.
 See aesop/protocol/bridge-protocol.md for the full spec.
@@ -27,14 +33,17 @@ Daemonized via termux-services (see deploy/phone/daemons/).
 import argparse
 import base64
 import hashlib
+import hmac
 import json
 import os
+import secrets
 import socket
 import struct
 import subprocess
 import sys
 import threading
 import time
+import urllib.parse
 import urllib.request
 import urllib.error
 
@@ -45,6 +54,32 @@ NPU_BASE = os.environ.get("AESOP_NPU_BASE", "http://127.0.0.1:8080")
 MEDIA_BASE = os.environ.get("AESOP_MEDIA_BASE", "http://127.0.0.1:8091")
 AESOP_DIR = os.environ.get("AESOP_DIR", os.path.expanduser("~/aesop"))
 TTS_SCRIPT = os.path.join(AESOP_DIR, "deploy/phone/tts_speak.py")
+TTS_OUT = os.path.expanduser("~/.aesop/tts-out.wav")
+TOKEN_FILE = os.path.expanduser("~/.aesop/bridge-token")
+MAX_FRAME = 1 << 20
+MAX_HEADERS = 16384
+
+
+def load_token():
+    tok = os.environ.get("AESOP_BRIDGE_TOKEN")
+    if tok:
+        return tok
+    if not os.path.exists(TOKEN_FILE):
+        os.makedirs(os.path.dirname(TOKEN_FILE), mode=0o700, exist_ok=True)
+        fd = os.open(TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(secrets.token_urlsafe(32))
+    with open(TOKEN_FILE) as f:
+        return f.read().strip()
+
+
+TOKEN = None  # set in main()
+
+
+def origin_ok(origin):
+    if origin is None:
+        return True
+    return urllib.parse.urlparse(origin).hostname in ("localhost", "127.0.0.1", "::1")
 
 
 def log(msg):
@@ -52,6 +87,9 @@ def log(msg):
 
 
 # ── RFC 6455 minimal server ─────────────────────────────────────────
+
+
+OVERSIZE = -1
 
 
 class WsConn:
@@ -69,16 +107,26 @@ class WsConn:
         self.sock.settimeout(5)
         while b"\r\n\r\n" not in data:
             chunk = self.sock.recv(4096)
-            if not chunk:
+            if not chunk or len(data) > MAX_HEADERS:
                 return False
             data += chunk
+        lines = data.decode("utf-8", "replace").split("\r\n")
         headers = {}
-        for line in data.decode("utf-8", "replace").split("\r\n")[1:]:
+        for line in lines[1:]:
             if ": " in line:
                 k, v = line.split(": ", 1)
                 headers[k.lower()] = v
         key = headers.get("sec-websocket-key")
         if not key:
+            return False
+        parts = lines[0].split(" ")
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(parts[1] if len(parts) > 1 else "").query)
+        supplied = headers.get("x-aesop-token") or (query.get("token") or [""])[0]
+        if not origin_ok(headers.get("origin")):
+            self.sock.sendall(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n")
+            return False
+        if not hmac.compare_digest(supplied.encode(), TOKEN.encode()):
+            self.sock.sendall(b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n")
             return False
         accept = base64.b64encode(
             hashlib.sha1((key + WS_GUID).encode()).digest()
@@ -113,6 +161,8 @@ class WsConn:
                 if ext is None:
                     return None, None
                 length = struct.unpack(">Q", ext)[0]
+            if length > MAX_FRAME:
+                return OVERSIZE, None
             mask = b""
             if masked:
                 mask = self._recv_exact(4)
@@ -166,6 +216,14 @@ class WsConn:
                 self.sock.sendall(head + payload)
         except OSError:
             self.alive = False
+
+    def close_frame(self, code):
+        payload = struct.pack(">H", code)
+        try:
+            with self.send_lock:
+                self.sock.sendall(struct.pack(">BB", 0x88, len(payload)) + payload)
+        except OSError:
+            pass
 
     def close(self):
         self.alive = False
@@ -264,8 +322,9 @@ def speak(text):
     """Kokoro TTS via the existing pipeline script (proot Debian)."""
     cmd = [
         "proot-distro", "login", "debian", "--bind", f"{os.path.expanduser('~')}:{os.path.expanduser('~')}",
-        "--", "python3", TTS_SCRIPT, text,
+        "--", "python3", TTS_SCRIPT, "--", TTS_OUT, text,
     ]
+    os.makedirs(os.path.dirname(TTS_OUT), exist_ok=True)
     return subprocess.run(cmd, capture_output=True, timeout=120).returncode == 0
 
 
@@ -334,6 +393,9 @@ def client_thread(conn):
     log(f"client connected: {conn.addr}")
     while conn.alive:
         opcode, payload = conn.recv_frame()
+        if opcode == OVERSIZE:
+            conn.close_frame(1009)
+            break
         if opcode is None or opcode == 0x8:  # closed
             break
         if opcode == 0x9:  # ping
@@ -343,8 +405,11 @@ def client_thread(conn):
             continue
         try:
             msg = json.loads(payload.decode("utf-8", "replace"))
-        except json.JSONDecodeError:
+        except ValueError:
             conn.send_json({"type": "error", "error": "bad json"})
+            continue
+        if not isinstance(msg, dict):
+            conn.send_json({"type": "error", "error": "message must be a JSON object"})
             continue
         # Each request handled on its own thread so a long generation
         # doesn't block pings/status from the same client.
@@ -357,6 +422,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=int(os.environ.get("AESOP_BRIDGE_PORT", 8765)))
     args = ap.parse_args()
+    global TOKEN
+    TOKEN = load_token()
 
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

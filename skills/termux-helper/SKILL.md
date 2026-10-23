@@ -104,7 +104,7 @@ and the objections never to raise.** Summary below.
 1. **GGUF on the NPU via GenieX (operator's Qualcomm-documented path).** A
    plain GGUF runs through the GenieX runtime: llama.cpp/GGML with
    `libggml-htp` → FastRPC (`libcdsprpc.so`, readable from Termux at
-   `/vendor/lib64`) → HTP. It lands fully on the NPU, at the same GenieX
+   `/vendor/lib64`) → HTP. Whether it lands fully on the NPU is per model (Qwen 3.5 keeps `ssm_out` on CPU). It is served at the same GenieX
    endpoint as a precompiled QAIRT model. No QAI Hub compile is needed.
    - The libs are in `~/tools/geniex-bench/lib`: `libggml-hexagon.so`,
      `libggml-htp-v79.so`, and `qairt/htp-files/libQnnHtpV79*.so`.
@@ -112,7 +112,7 @@ and the objections never to raise.** Summary below.
      3.2 GB or less runs on `HTP0`. Up to 6.5 GB splits across `HTP0,HTP1`
      (e.g. layers 0–24 / 25–48: `D=HTP0,HTP1 … --n-gpu-layers 49`). Bigger
      models need three domains or CPU offload.
-   - GenieX modes are `--device hybrid` (the default), `npu`, `gpu` and `cpu`.
+   - GenieX modes are `--device npu` (the default), `hybrid`, `gpu` and `cpu`.
    - Docs: `~/repos/Aesop-Xi/HTP/HTP-Memory-Architecture-and-runtime-splitting (1).txt`
      and `~/storage/shared/Documents/NovAExorpus/HTP/`. They come from the Qualcomm docs on the
      device: vault `QAIRT-QNN/` and `02_wiki_md/vendors/qualcomm/`.
@@ -151,8 +151,9 @@ Adreno 830 via OpenCL if the build carries it, CPU big cores otherwise.
 into the i8mm/dotprod aarch64 layout on this SoC; K-quants (Q4_K_XL etc.)
 don't get that, so when both are on disk, pick Q4_0. Which model is
 "strongest" (e.g. Gemma 4 12B QAT vs Qwen 3.5 9B) is an open question for the
-operator. Don't rank models without a benchmark. Whatever runs on the NPU
-(above) beats this plane on speed.
+operator. Don't rank models without a benchmark. Speed is measured, not
+assumed: on 2026-10-02 npu-serve decoded Qwen3.5 2B at 12.7 tok/s on the NPU
+versus 34 tok/s on CPU.
 
 **Models are already on device.** Discover, never download. Never quantize —
 these are pre-quantized and plug-and-play. If asked about quantization,
@@ -199,7 +200,7 @@ sv status llamad aesopd
 ```
 
 - `sv up|down|restart <svc>` — manual control
-- `tail -f $PREFIX/var/log/llamad/current` — svlogd output
+- `tail -f ~/.aesop/log/llamad/current` — svlogd output
 - `termux-wake-lock` before long runs; `termux-wake-unlock` after
 - tmux is the fallback when services aren't installed, not the primary path
 

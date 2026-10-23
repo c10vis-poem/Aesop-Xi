@@ -4,12 +4,10 @@
 # GGUF path: llama.cpp → GGML → Adreno 830 via OpenCL when the build has
 # it, CPU big cores otherwise. That is the whole ladder in here.
 #
-# NO HTP FROM TERMUX. Termux cannot reach the Hexagon DSP — the FastRPC
-# vendor libs are outside this sandbox, and no llama.cpp build flag fixes
-# that. Don't add ggml-hexagon here; don't spend an evening on it.
-# The HTP path is the APP: Horizons (Kotlin/WebView) → ort_engine on 8080,
-# running GENIE-compiled contexts (Gemma 4 E4B, Qwen 2B QAI). Termux gets
-# to that plane by asking the app over the bridge, never by loading it.
+# NPU: llama-server on the NPU (ggml-hexagon) currently fails here with
+# 0x80000414 and falls back to CPU, so this plane stays CPU/GPU. GenieX
+# (npu-serve, 127.0.0.1:18181) is the working NPU path from Termux; see
+# ~/.claude/NPU-ON-DEVICE.md. The app's ort_engine on 8080 is the other.
 #
 # Models are ALREADY ON DEVICE — this script only discovers, never downloads.
 # Override discovery with:  export AESOP_MODEL=/path/to/model.gguf
@@ -27,24 +25,23 @@ discover_model() {
     echo "$AESOP_MODEL"
     return
   fi
-  # Preferred: Gemma 4 12B IT QAT in Q4_0 specifically. llama.cpp
+  # Preferred: Gemma 4 12B IT QAT in Q4_0 when present. llama.cpp
   # runtime-repacks Q4_0 into the i8mm/dotprod aarch64 layout on this SoC,
-  # which K-quants (Q4_K_XL etc.) don't get. Both files may be on disk —
-  # Q4_0 must win.
+  # which K-quants (Q4_K_XL etc.) don't get. If only a K-quant is on disk, it is used.
   local m
-  m="$(find "$HOME/models" /sdcard/Download /storage/emulated/0/Download /storage/*/models \
-      -iname '*gemma*12b*q4_0*.gguf' 2>/dev/null | head -1)"
+  m="$(find "$HOME/models" "$HOME/downloads" /sdcard/Download /storage/emulated/0/Download /storage/*/models \
+      -iname '*gemma*12b*q4_0*.gguf' ! -iname '*mmproj*' 2>/dev/null | head -1)"
   if [ -n "$m" ]; then echo "$m"; return; fi
   # Any Gemma 12B quant as second choice
-  find "$HOME/models" /sdcard/Download /storage/emulated/0/Download /storage/*/models \
-      -iname '*gemma*12b*.gguf' 2>/dev/null | head -1 && return
+  find "$HOME/models" "$HOME/downloads" /sdcard/Download /storage/emulated/0/Download /storage/*/models \
+      -iname '*gemma*12b*.gguf' ! -iname '*mmproj*' 2>/dev/null | head -1 && return
 }
 
 MODEL="$(discover_model | head -1)"
 if [ -z "$MODEL" ]; then
   # Fall back to ANY gguf so the plane comes up degraded rather than dead
-  MODEL="$(find "$HOME/models" /sdcard/Download /storage/emulated/0/Download \
-      -iname '*.gguf' 2>/dev/null | head -1)"
+  MODEL="$(find "$HOME/models" "$HOME/downloads" /sdcard/Download /storage/emulated/0/Download \
+      -iname '*.gguf' ! -iname '*mmproj*' 2>/dev/null | head -1)"
 fi
 if [ -z "$MODEL" ]; then
   echo "[llamad] no .gguf found in ~/models, /sdcard/Download, or SD card."
@@ -68,6 +65,6 @@ exec llama-server \
   --host 127.0.0.1 \
   --port "$PORT" \
   -ngl "$NGL" \
-  -fa \
+  -fa on \
   -ctk q8_0 -ctv q8_0 \
   -t "${AESOP_THREADS:-6}"
