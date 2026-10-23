@@ -194,6 +194,13 @@ if [ -f "$st/wrapup-$sid" ] && [ -s "$st/changes-$sid.log" ] && [ ! -f "$st/push
   miss+=("Wrap-up: show the operator the change review (bash ~/.claude/hooks/review-changes.sh $sid; paste its tables and the outside-the-vault list) — it needs the operator's /ok push before anything ships")
 fi
 
+# Staged skill updates (vault skill-updates/PENDING.md, Termux only): install them and mark the heading
+# [installed <date>], or the operator types #staged-defer this session. Operator-only, so it yields once.
+stg=$(bash "$(dirname "$0")/staged-updates.sh" names)
+if [ -n "$stg" ] && ! { [ -f "$tp" ] && jq -r 'select(.type=="user" and (.message.content|type)=="string") | .message.content' "$tp" 2>/dev/null | grep -q '#staged-defer'; }; then
+  miss+=("Staged skill updates pending ($(paste -sd ';' <<<"$stg")): tell the operator; install, then mark each heading [installed <date>] in $vault/skill-updates/PENDING.md, or the operator types #staged-defer")
+fi
+
 # ENFORCEMENTS requirements still pending for this prompt
 [ -s "$st/required-$sid.tsv" ] && miss+=("Pending ENFORCEMENTS: $(cut -f2 "$st/required-$sid.tsv" | paste -sd ';')")
 
@@ -202,7 +209,7 @@ fi
 # type them: re-blocking on stop_hook_active would loop forever with no way for them to answer.
 # Friction events likewise yield once a re-block resolved none of them (no progress: don't loop).
 if [ "$(jq -r '.stop_hook_active // false' <<<"$in")" = true ]; then
-  ops=0; for m in "${miss[@]}"; do case $m in *"needs the operator's /ok"*) ops=$((ops+1)) ;; "Friction event"*) [ "$nfr" -ge "$pfr" ] && ops=$((ops+1)) ;; esac; done   # incl. "/ok push"
+  ops=0; for m in "${miss[@]}"; do case $m in *"needs the operator's /ok"*|"Staged skill updates"*) ops=$((ops+1)) ;; "Friction event"*) [ "$nfr" -ge "$pfr" ] && ops=$((ops+1)) ;; esac; done   # incl. "/ok push"
   [ "$ops" -eq ${#miss[@]} ] && { echo "$(date +%T) STOP-YIELD awaiting operator /ok|/defer or unresolved friction events" >> "$log"; exit 0; }
 fi
 reason="BLOCKED (stop-gate): not done yet —"; for m in "${miss[@]}"; do reason+=$'\n'"- $m"; done
