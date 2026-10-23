@@ -36,5 +36,3 @@ Durable cross-session backlog. Not rewritten each session — items persist unti
 - Hook 3 (list newest sessions across all `~/.claude/projects/*` at SessionStart; vault obs 0012): operator undecided, not built.
 - Checks proposed by vault observations 0038-0041: value review before offering deletes; never bundle a turn-off; subagent scope clause or a touched-files check at SubagentStop; encode delete ordering inside commands.
 - `run-hook.sh` cloud allowlist does not include the #76/#77 hooks (left out on purpose; decide whether cloud sessions need them).
-- `checkin-gate.sh` false positives (vault obs 0042): blocks the Stop auditor's StructuredOutput and read-only Bash with words like `rm -`/`mv` inside quoted arguments; every block becomes a friction event stop-gate demands be cleared. `/ok 1-4` records only item 1 (ranges not parsed).
-- Wrap-up gaps (vault obs 0043): WRAP-UP.md step 6 does not name `vault-ship` for the vault; the wrap-up stop gate does not check for uncommitted vault changes or touched repos without a RESUME/MEMORY update.

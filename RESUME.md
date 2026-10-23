@@ -15,11 +15,9 @@
 - Other: #55 and #66 tests; #58 change-log classifies the keep under any spelling; #60 NvAEx- repo names; #63 terrestrial-brain is not OB1; #65 stale VM IP dropped; #68 Kokoro TTS lexicons and WAV via sherpa-onnx; #70 aesopd/llamad token and Origin auth, frame cap, localhost bind; #73 Qwen3-VL dropped as the example model; #78 AGENTS, MEMORY, PENDING for 2026-10-23.
 
 ## NEXT
-1. Fix `checkin-gate.sh` false positives (vault observation 0042): it blocks the auditor's StructuredOutput and read-only Bash whose quoted arguments contain words like `rm -` or `mv`; each block becomes a friction event the stop gate then demands be cleared. Also `/ok 1-4` recorded only item 1.
-2. Wrap-up gaps (vault observation 0043): WRAP-UP.md step 6 should name `vault-ship` for the vault, and the wrap-up stop gate should refuse while the vault has uncommitted changes or a touched repo has no RESUME/MEMORY update this session.
-3. Checks proposed by vault observations 0038-0041 (see PENDING.md 2026-10-23).
-4. Decide whether cloud sessions need the #76/#77 hooks (`run-hook.sh` allowlist leaves them out on purpose).
-5. npu-serve: tool calls, multiple images per message, InternVL 2B in `models.json` (PENDING.md 2026-10-02).
+1. Checks proposed by vault observations 0038-0041 (see PENDING.md 2026-10-23).
+2. Decide whether cloud sessions need the #76/#77 hooks (`run-hook.sh` allowlist leaves them out on purpose).
+3. npu-serve: tool calls, multiple images per message, InternVL 2B in `models.json` (PENDING.md 2026-10-02).
 
 ## Sources read for this file
 This repo's RESUME.md (old), PENDING.md, MEMORY.md (2026-10-01 to 2026-10-23 sections), `hooks/` listing, the merged PR titles #53-#78 (`gh search prs`), `gh pr list --state open` (none). Vault: `RESUME.md`, `~/.claude/hooks/README.md`, observations 0042 and 0043. Not read: AGENTS.md this session, the PR bodies and diffs, `hooks/` sources, `docs/`, `deploy/`, `skills/`, `tools/`.
