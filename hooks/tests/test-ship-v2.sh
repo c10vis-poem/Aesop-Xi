@@ -1,6 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # ship-session.sh end-to-end: local bare remotes, stub gh (PR OPEN for 2 views, then MERGED;
 # head $GH_STUCK stays OPEN forever), fake vault. Global gitleaks git hooks run for real.
+command -v gitleaks >/dev/null || { echo "SKIP $0: gitleaks not installed (CI installs it)"; exit 0; }
 source "$(dirname "$0")/lib.sh"
 V2=$HOOKS/ship-session.sh
 SID=33333333-aaaa-bbbb-cccc-000000000000

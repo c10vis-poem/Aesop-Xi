@@ -1,5 +1,6 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # H4 ship-session.sh end-to-end against local bare remotes + stub gh + fake vault.
+command -v gitleaks >/dev/null || { echo "SKIP $0: gitleaks not installed (CI installs it)"; exit 0; }
 source "$(dirname "$0")/lib.sh"
 SID=22222222-aaaa-bbbb-cccc-000000000000
 B="session/$(date +%F)-22222222"
