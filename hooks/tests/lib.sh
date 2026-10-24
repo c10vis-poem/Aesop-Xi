@@ -21,7 +21,7 @@ case "\$*" in
   api\ repos/*actions/workflows*) echo 1 ;;
   api\ repos/*required_status_checks*length*) echo 1 ;;
   api\ repos/*required_status_checks*) echo check ;;
-esac   # ci-ready.sh: CI + required check `check` that a job produces
+esac   # ci-ready.sh: CI plus a required status check named check that a job produces
 exit 0
 EOF
 chmod +x "$T/bin/gh"; export PATH="$T/bin:$PATH"
