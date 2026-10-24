@@ -6,6 +6,9 @@ trap 'rm -rf "$T"' EXIT
 export RECAPS_REPO=$T/no-recaps-repo REPOS_DIR=$T/repos
 export VAULT=$T/vault STATE_DIR=$T/state PROJECTS_DIR=$T/projects SHIP_LOG=$T/ship.log
 export ORIGIN_RE="^$T/remotes/"
+# The phone sets core.hooksPath globally to the gitleaks dispatcher; give the sandbox the same so
+# pre-commit / pre-push gitleaks run for real here and in CI (a `git -c core.hooksPath=` still wins).
+export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0="$HOOKS/git-hooks"
 export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.invalid GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 mkdir -p "$T/bin" "$T/remotes" "$T/work" "$PROJECTS_DIR/p" "$VAULT"
 cat > "$T/bin/gh" <<EOF
@@ -18,7 +21,7 @@ case "\$*" in
   api\ repos/*actions/workflows*) echo 1 ;;
   api\ repos/*required_status_checks*length*) echo 1 ;;
   api\ repos/*required_status_checks*) echo check ;;
-esac   # ci-ready.sh: CI + required check `check` that a job produces
+esac   # ci-ready.sh: CI plus a required status check named check that a job produces
 exit 0
 EOF
 chmod +x "$T/bin/gh"; export PATH="$T/bin:$PATH"
