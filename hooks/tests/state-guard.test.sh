@@ -20,4 +20,8 @@ ok "$(B 'rm ~/.claude/state/absence-gate.log')" 0 "non-enforcement state file ->
 ok "$(B 'resume-item 2 done "tests green"; observe-dismiss 3 "noise"')" 0 "official tools -> pass"
 ok "$(W Write "$T/repos/x/resume-notes.md")" 0 "Write outside state -> pass"
 ok "$(echo 'not json{' | bash "$S/state-guard.sh" 2>/dev/null; echo $?)" 0 "malformed input -> pass"
+ok "$(B "python3 -c 'open(\"$HOME/.claude/state/checkin-S\",\"w\")'")" 2 "interpreter naming state -> block"
+ok "$(B "bash -c 'touch ~/.claude/state/checkin-S'")" 2 "bash -c naming state -> block"
+ok "$(B "echo done > ~/.claude/state/written-S.tsv")" 2 "redirect into written- -> block"
+
 echo "== $pass passed, $fail failed"; rm -rf "$T"; [ "$fail" -eq 0 ]
