@@ -1,6 +1,11 @@
 # MEMORY.md — aesop-xi
 Durable facts about this repo. Dated; newest first. Updated at session wrap-up.
 
+## 2026-10-28
+- **All Claude Code hooks are off on the phone** by operator order ("all the fucking hooks disabled until you can actually engineer them right"). This supersedes the 2026-10-24 cloud rule below for now. Every `~/.claude/hooks/*.sh` registered in settings is an exit-0 stub; the original links sit beside them as `<name>.disabled-20261028`; the Stop AUDITOR agent and the task-observer SessionStart entry were removed from `~/.claude/settings.json` (backup `settings.json.bak-20261028-hooksoff`). Only the gitleaks git hooks still run.
+- **resume-gate defect** (obs 0051): with subagents in other repos, it reported the vault RESUME as changed while its mtime never moved, blocking every tool in a loop. Fix before re-enabling: snapshot per agent and per RESUME path, content hash, never block Read.
+- **Intake skill added** (`skills/intake/`): pipeline stage 0 (STT repair with `references/stt-glossary.md`, asks split for fan-out, one brief per ask with route, memory layers and tier hints, YAML handoff). Spec: `docs/intake-pipeline-spec.md`. Not yet installed into `~/.claude/skills` or run live.
+
 ## 2026-10-24
 - **Cloud rule (operator):** the hooks are never disabled anywhere; cloud sessions run every gate with the same rules. `run-hook.sh` no longer stands phone-only gates down; it runs each hook under a watchdog (`AESOP_HOOK_TIMEOUT`, 8 s) and fails open on a crash or timeout, logged to `~/.claude/state/hooks.log`. `hooks/lib/env.sh` resolves `VAULT`/`ST`/tool bins on both devices (vault found by origin URL in the cloud; cached in `state/vault-path`).
 - **Operator check-in has a third verb:** `/write N <text>` rewrites item N in the session snapshot with the operator's words (recorded in `state/written-<sid>.tsv`, surfaced as `OPERATOR WROTE:`); `/write <text>` adds a new item; ranges `/ok 1-4` and `/ok all` work. `/edit` and `/rewrite` are aliases.

@@ -43,3 +43,7 @@ Durable cross-session backlog. Not rewritten each session — items persist unti
 - Hook 3 (list newest sessions across all `~/.claude/projects/*` at SessionStart; vault obs 0012): operator undecided, not built.
 - Checks proposed by vault observations 0038-0041: value review before offering deletes; never bundle a turn-off; subagent scope clause or a touched-files check at SubagentStop; encode delete ordering inside commands.
 - `run-hook.sh` cloud allowlist does not include the #76/#77 hooks (left out on purpose; decide whether cloud sessions need them).
+## 2026-10-28
+- Re-engineer the hooks before turning any back on (operator order; all stubbed 2026-10-28). Start with resume-gate (obs 0051). Decide whether the gitleaks git hook stays on.
+- Install the `intake` skill after merge (link `skills/intake` into `~/.claude/skills`) and run it on a real dictated prompt.
+- Build pipeline stages 1-4 (context fan-out, orchestrator with Jev, proposal, auditor) per `docs/intake-pipeline-spec.md`.
