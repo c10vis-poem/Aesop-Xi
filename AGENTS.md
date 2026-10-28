@@ -106,9 +106,9 @@ re-discover these from scratch:
   plugins listed). Deferred to a future flash session — see `PENDING.md` in
   NovAExorpus.
 
-## Enforcement hooks H1–H7 travel with this repo (2026-10-02)
+## Enforcement hooks travel with this repo (2026-10-02; cloud rules 2026-10-24)
 
-`.claude/settings.json` registers every phone hook (RESUME/check-in/Stop gates, sync-on-use, ledger, ship-session, secret-guard, ENFORCEMENTS gate, prompt classifier, branch/git gates, context-diff, housekeeping, archive) through `hooks/run-hook.sh`. A session started in this repo gets them on any device; where `~/.claude/hooks/<name>` already exists (this phone) the launcher exits 0 so nothing fires twice. In cloud sessions (`CLAUDE_CODE_REMOTE=true`, not Termux) the launcher runs only secret-guard, branch-current-gate and context-diff, since the other gates need the phone's vault and state and would block forever there; `AESOP_CLOUD_GATES=1` overrides. Sources stay in `hooks/` — edit there, copy to `~/.claude/hooks/`.
+`.claude/settings.json` registers every hook (RESUME/check-in/Stop gates, sync-on-use, ledger, change-log, observer events, ship-session, secret-guard, ENFORCEMENTS gate, prompt classifier, branch/git gates, state/settings guards, build-doc, agent-type, delegation tripwire, SubagentStop, context-diff, housekeeping, archive) through `hooks/run-hook.sh`. A session started in this repo gets them on any device; where `~/.claude/hooks/<name>` already exists (the phone) the launcher exits 0 so nothing fires twice. **Cloud sessions run the same gates with the same rules; nothing stands down** (operator, 2026-10-24). What differs: `hooks/lib/env.sh` resolves the vault and state paths for the cloud checkouts, a check that only the phone can satisfy is reported as a NOTE instead of blocking forever, and every hook runs under a watchdog that fails open and logs (`~/.claude/state/hooks.log`), so a hook can never hang or end a cloud session. Sources stay in `hooks/` — edit there, copy to `~/.claude/hooks/`. The operator's check-in verbs are `/ok`, `/defer`, `/reject` and `/write` (`hooks/README.md`).
 
 ## Subagents — standing order (operator, 2026-10-01; updated 2026-10-04)
 This is the explicit ask the Agent tool requires; don't wait to be told.

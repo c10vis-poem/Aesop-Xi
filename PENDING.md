@@ -31,6 +31,13 @@ Durable cross-session backlog. Not rewritten each session — items persist unti
 - **novus-aeyre PR 6** (memory reference + bootstrap wrapper) queued auto-merge — verify it landed next session.
 - **mem0 CLI plugin API key** was broken from Sep 9–15 (key written to wrong dir). Fixed: key now at `~/.claude/plugins/data/mem0-mem0-plugins/api-key`. Verify with `mem0:status` every session.
 
+## 2026-10-24
+- **ECC entries in `.claude/settings.json`** (two PostToolUse hooks: `session-activity-tracker.js || true` and an LLM `prompt` hook on every Bash call): ECC is not installed, so one is a no-op and the other spends a model call per Bash command for nothing. Operator decides whether to remove them (nothing is turned off without the operator naming it).
+- **gitleaks in cloud sessions:** the cloud container has no `gitleaks` binary, so the pre-commit secret scan (`git-hooks/dispatch`) and the two ship test suites cannot run there. Add it to the cloud environment setup script, or accept CI as the only secret gate for cloud commits.
+- **Stale references to the dropped stack** (OmniRoute, mem0, Terrestrial Brain): `deploy/gcp-vm/`, `deploy/jetson/`, `profiles/nav.yaml`, `ARCHITECTURE.md`, `tools/omniroute/`, and `PENDING.md` "Blocking / Wiring work" items above. Mark superseded or delete (operator).
+- **Hook 3** (newest sessions across projects at SessionStart) still undecided; the opening ledger (`state/opening-<sid>.tsv`) now gives a place to record it if built.
+- **Plugin/skill cross-comparison** (2026-10-24, vault `audit/`): 13+ memory plugins, 5 wiki plugins, 3 task-observer copies and 2 pge copies overlap the aesop-xi discipline; consolidation list awaits the operator's choices.
+
 ## 2026-10-23
 - mem0, OmniRoute, Terrestrial Brain and ECC items above are moot for mem0/OmniRoute/TB (dropped by the operator 2026-10-23).
 - Hook 3 (list newest sessions across all `~/.claude/projects/*` at SessionStart; vault obs 0012): operator undecided, not built.
