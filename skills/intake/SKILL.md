@@ -5,7 +5,7 @@ description: Stage 0 of the operator's task pipeline. Turns the operator's raw r
 
 # Intake: STT repair, prompt engineering, decomposition
 
-Stage 0 of the pipeline in `~/.claude/session-work/2026-10-28/intake-workflow-spec.md`:
+Stage 0 of the pipeline in `docs/intake-pipeline-spec.md` (this repo):
 intake, then context fan-out, orchestrator, proposal, auditor. This stage only
 produces the brief. It does not run the task, open repos to do the work, or
 ask the operator menu-style questions.
@@ -38,19 +38,32 @@ ask the operator menu-style questions.
    how to verify with a round trip, what to report.
 5. **Route hints.** For each ask, name the model tier (haiku for lookups,
    sonnet for normal research and routine code, opus or fable for hard
-   reasoning and architecture) and any installed skill, plugin, MCP or repo
-   that clearly fits. These are hints for the orchestrator (stage 2), not
-   decisions.
+   reasoning and architecture), any installed skill, plugin, MCP or repo
+   that clearly fits, the candidate route (dynamic workflow, workspace
+   marketplace, preconfigured agent package, slash command, model route,
+   straight execution, or other), and the memory layers the task needs
+   (episodic, static, code graph, graphify). These are hints for the
+   orchestrator (stage 2), which decides with Jev; they are not decisions.
+   Every brief carries the operator's standing constraints: advisor mode on,
+   subagent prompt cache TTL 1 hour for long tasks.
 6. **Gaps.** List what is unknown as stated assumptions the work will use,
    not as questions. Ask the operator only when a gap blocks every reasonable
    reading of the request, and then one plain question, never a menu.
 7. **Write the file** to `~/.claude/session-work/<YYYY-MM-DD>/intake/<HHMMSS>.md`
    using the template below, then show the operator the Brief section only,
-   with the path to the full file.
+   with the path to the full file. Stage 1 receives that path; the YAML
+   frontmatter is the machine-readable handoff.
 
 ## Output template
 
 ```markdown
+---
+intake: <YYYY-MM-DD HH:MM>
+intent: <one line, the operator's goal>
+rewritten_prompt: <the whole request as one clean prompt>
+asks:
+  - {id: 1, name: <short>, depends_on: [], fan_out: true, tier: sonnet, route: <route>, memory: [static], fits: [<skill/tool>]}
+---
 # Intake <YYYY-MM-DD HH:MM>
 
 ## Operator's words
@@ -60,8 +73,8 @@ ask the operator menu-style questions.
 - heard -> meant (why)
 
 ## Asks
-| # | Ask (operator's words) | Depends on | Fan-out | Tier | Fits |
-|---|---|---|---|---|---|
+| # | Ask (operator's words) | Depends on | Fan-out | Tier | Route | Memory | Fits |
+|---|---|---|---|---|---|---|---|
 
 ## Brief
 ### 1. <short name>
