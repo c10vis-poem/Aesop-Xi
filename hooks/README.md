@@ -38,7 +38,17 @@ Sources live in `aesop-xi/hooks/`. Live copies are in `~/.claude/hooks/` and `~/
 | `plugin-fork-sync.sh` | by hand | syncs the operator's plugin forks with upstream |
 | `run-hook.sh` | (launcher) | aesop-xi `.claude/settings.json` registers every hook above through this, so any session started in aesop-xi gets them on any device, cloud sessions included: nothing stands down. Stands aside only when `~/.claude/hooks/<name>` exists (the global copy fires), so nothing runs twice. Runs each hook under a watchdog (`AESOP_HOOK_TIMEOUT`, 8 s; 60 s for ship/sync/archive); a timeout or an internal error is logged to `~/.claude/state/hooks.log` and the call is allowed, so a hook can never hang or end a session. Exit 2 and stdout pass through. Paths come from `lib/env.sh` (vault found by remote URL in the cloud) |
 
-Operator override for enforcement (user-typed only): `#skip-enforce` in a prompt (logged). A `#skip-enforce` or `#staged-defer` that arrives inside a subagent hand-back is ignored.
+Operator override for enforcement (user-typed only): `#skip-enforce` in a prompt (logged).
+
+## Safety net (operator, 2026-11-03; in `run-hook.sh`, covers every hook it launches)
+The operator always wins over every hook. All of this only reads prompts the operator typed, never a subagent hand-back or notification.
+- **Master switch:** `#hooks-off` (or "hooks off", "turn the hooks off", "kill the hooks", "disable the hooks") turns every hook off on this device, across sessions, until `#hooks-on` (or "hooks on", "turn the hooks back on"). Env `AESOP_HOOKS_OFF=1` does the same for one launch.
+- **Override:** a prompt matching any line of `hooks/override-phrases.txt` ("override", "I told you", "go ahead", "just do it", "you can read it", "this is what I want", ...) lets every block through for the rest of that turn. Add your own words to that file.
+- **Loop breaker:** one hook may block at most `AESOP_MAX_BLOCKS` (2) times per turn, and all hooks together `AESOP_MAX_TURN_BLOCKS` (6). After that it yields and logs `LOOP-BREAKER` in `~/.claude/state/hooks.log`.
+- **No either/or menus:** every block carries a footer telling the agent these controls exist and not to hand the operator choices to clear a gate.
+- `state-guard.sh` keeps the agent from writing `hooks-off`, `override-*` and `blocks-*`, so only the operator can flip them.
+- A `~/.claude/hooks/<name>` that is only an exit-0 stub no longer makes the project copy stand aside.
+- Tests: `tests/safety-net.test.sh`. A `#skip-enforce` or `#staged-defer` that arrives inside a subagent hand-back is ignored.
 
 Tests: `hooks/tests/*.test.sh` and `test-*.sh` (CI runs them all; locally they need a bash at the Termux shebang path and `gitleaks` on PATH for the two ship suites).
 
