@@ -1,0 +1,18 @@
+# Operator override phrases (case-insensitive extended regex, one per line).
+# A prompt the operator types that matches any line lets every hook block through for that turn
+# (scripts/run-gate.sh; never secret-guard, settings-guard or state-guard). Lines starting with "# " are comments. Add your own words freely.
+#override
+\boverride\b
+\bi (just |already )?(told|said to) you\b
+\bi'?m telling you\b
+\bi said (so|to|you can|go)\b
+\bgo ahead\b
+\bdo it anyway\b
+\bjust do it\b
+\bdo what i (said|told you)\b
+\byou can (go ahead and )?(read|do|run|push|edit|write|open|delete|merge|use|install)\b
+\byou have my (permission|ok|okay|go)\b
+\bi'?m giving you permission\b
+\bthis is what i want\b
+\bignore (the |that |this )?(hook|gate|block)
+\blet it through\b

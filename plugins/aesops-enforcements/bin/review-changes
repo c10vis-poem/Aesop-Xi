@@ -1,0 +1,2 @@
+#!/bin/sh
+exec bash "$(dirname "$(realpath "$0")")/../scripts/review-changes.sh" "$@"
