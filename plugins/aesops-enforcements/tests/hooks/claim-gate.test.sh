@@ -40,4 +40,25 @@ ok "$(G "That flag won't work.")" 2 "a grep is not a trial -> block"
 { U "q"; A Read '{"file_path":"/r/notes.txt"}'; R; } > "$T/tr.jsonl"
 ok "$(G 'No. "Modified tests" does not mean these will not work.')" 0 "negated (doesn't mean ... won't work) -> not a claim"
 ok "$(G 'You asked whether it "won'"'"'t work on Termux".')" 0 "quoted phrase -> not a claim"
+# 4/5 (operator 2026-11-10: "You should have to be forced to prove it"): a status list matches its source; read counts need reads
+RT(){ jq -cn --arg c "$1" '{type:"user",message:{content:[{type:"tool_result",tool_use_id:"t",content:$c}]}}'; }
+rep=$'## unsupported (2)\n- `Assets/a.zip`: no converter for .zip\n- `More/jev_db.py`: no converter for .py'
+quar=$'/x/Argon/the remedy.txt\tnull\n/x/Assets/a.zip\tnull'
+{ U "ingest"; A Bash '{"command":"python3 convert.py"}'; RT "$rep"; A Bash '{"command":"jq . q.jsonl"}'; RT "$quar"; } > "$T/tr.jsonl"
+ok "$(G $'Convert: 2 unsupported. By name:\n- `Assets/a.zip`\n- `Argon/the remedy.txt`')" 2 "a name under 'unsupported' that only another output showed -> block"
+ok "$(command grep -c 'the remedy.txt' "$T/err")" 1 "reason names the unproven file"
+ok "$(G $'Convert: 2 unsupported:\n- `Assets/a.zip`\n- `More/jev_db.py`')" 0 "names copied from the report -> pass"
+ok "$(G $'Two files are unsupported: `Assets/a.zip` and `More/jev_db.py`.')" 0 "inline list matching the report -> pass"
+ok "$(G $'Unsupported:\n- `Assets/a.zip`\n\nNext: `Argon/the remedy.txt`.')" 0 "a later paragraph is not part of the list -> pass"
+ok "$(G 'All flags now come back as "released": nothing stops them. Your list is `~/.local/state/released.txt`.')" 0 "a path in the next sentence is not listed under the status -> pass"
+{ U "ingest"; A Read '{"file_path":"/x/a.md"}'; R; A Read '{"file_path":"/x/b.md"}'; R; } > "$T/tr.jsonl"
+ok "$(G "I read 240 files and analyzed them.")" 2 "read-count claim above the Reads this session -> block"
+ok "$(G "I read 2 files.")" 0 "read-count claim matching the Reads -> pass"
+ok "$(G "Ingested 3 documents.")" 2 "ingested count above Reads -> block"
+# 6/7 Rule 13, no lying
+{ U "check"; A Read '{"file_path":"/x/AGENTS.md"}'; R; A Bash '{"command":"bash t.sh"}'; RT "t.sh passed=12 failed=0"; } > "$T/tr.jsonl"
+ok "$(G 'I read `AGENTS.md` and `RULES.md`.')" 2 "says a file was read that no tool touched -> block"
+ok "$(G 'I read `AGENTS.md`.')" 0 "read claim backed by a Read -> pass"
+ok "$(G "It passes 12 of 12.")" 0 "test numbers shown by a tool this turn -> pass"
+ok "$(G "Selftest: 787 of 787 passed.")" 2 "test numbers no tool showed this turn -> block"
 echo "== $pass passed, $fail failed"; rm -rf "$T"; [ "$fail" -eq 0 ]

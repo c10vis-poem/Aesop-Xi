@@ -26,6 +26,7 @@
 # Cloud: the same checks run; a check that needs the phone (vault, task-observer, gh) and cannot be
 # satisfied here is reported as a NOTE instead of blocking (lib/env.sh advise), never silently dropped.
 . "$(dirname "$(realpath "$0")")/lib/env.sh"
+. "$(dirname "$(realpath "$0")")/lib/opening.sh"
 in=$(cat)
 # A subagent's turn end: its own checks.
 [ "$(jq -r '.hook_event_name // ""' <<<"$in")" = SubagentStop ] && { bash "$HOOKS_DIR/subagent-stop-gate.sh" <<<"$in"; exit $?; }
@@ -95,10 +96,13 @@ fi
 # ---------- OBSERVER (O5, W2, compaction) ----------
 so="${vault:-/nonexistent}/skill-observations"
 if [ -d "$so" ]; then
-  if [ -f "$tp" ] && ! jq -e 'select(.type=="assistant") | .message.content[]? | select(.type=="tool_use" and .name=="Skill" and (.input.skill|test("task-observer")))' "$tp" >/dev/null 2>&1; then
-    miss+=("Opening, in this order (no okay needed): read the launch folder's AGENTS.md, MEMORY.md, RESUME.md, the handoff it points to and PENDING.md, and the files they point to; then last, load the task-observer skill and run its Session Start Protocol")
+  rm_=$(opening_reads_missing "$top" "$open" | paste -sd ';' | sed 's/;/; /g')
+  if [ -n "$rm_" ]; then
+    miss+=("Opening, in this order (no okay needed): read these with Read, whole: $rm_; and the files they point to; then last, load the task-observer skill and run: $(opening_scan_cmd) (its output read whole, never through tail, head or grep)")
+  elif [ -f "$tp" ] && ! jq -e 'select(.type=="assistant") | .message.content[]? | select(.type=="tool_use" and .name=="Skill" and (.input.skill|test("task-observer")))' "$tp" >/dev/null 2>&1; then
+    miss+=("$(opening_text load)")
   elif [ -f "$st/resume-$sid.ok" ] && [ ! "$so/checkpoints.log" -nt "$st/resume-$sid.ok" ]; then
-    miss+=("Opening, in this order (no okay needed): read the launch folder's AGENTS.md, MEMORY.md, RESUME.md, the handoff it points to and PENDING.md, and the files they point to; then last, run the task-observer session-start scan (it appends to skill-observations/checkpoints.log)")
+    miss+=("$(opening_text scan)")
   fi
   if [ -f "$st/compact-$sid" ]; then
     { read -r ct; read -r cn; } < "$st/compact-$sid"

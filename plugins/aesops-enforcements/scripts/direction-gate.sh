@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Rule 1, the operator's words: no actions, no reading, no tool use without explicit permission or direction.
 # Replaces resume-gate. UserPromptSubmit decides, PreToolUse enforces.
-#   A prompt starting with # (or the word "hashtag", for dictation) is a direction: opens the job.
-#   An affirmation (okay, yes, go, override...) opens the job. Any other prompt closes it.
-#   One opening covers the whole job, every tool and step, until the next non-opening prompt.
-# Closed: only the opening reads (AGENTS, MEMORY, RESUME, HANDOFF, PENDING, MAP, CLAUDE, and paths those
-# documents name), the task-observer session start, and asking the operator.
+#   A prompt with # (or the word "hashtag", for dictation) is a direction: opens the job (operator 2026-11-10:
+#   "we keep the hash tag"). An affirmation (okay, yes, go, override...) opens the job. A stop word closes it.
+#   One opening covers the whole job, every tool and step.
+# Closed: only the opening steps (lib/opening.sh, the same source the stop-gate asks from), the opening reads
+# (AGENTS, MEMORY, RESUME, HANDOFF, PENDING, MAP, CLAUDE, and paths those documents name), and asking.
 . "$(dirname "$(realpath "$0")")/lib/env.sh"
+. "$(dirname "$(realpath "$0")")/lib/opening.sh"
 in=$(cat); sid=$(jq -r '.session_id // empty' <<<"$in") || exit 0; [ -n "$sid" ] || exit 0
 ev=$(jq -r '.hook_event_name // ""' <<<"$in"); job="$ST/job-$sid"; open="$ST/opening-$sid.tsv"
 
@@ -85,21 +86,13 @@ esac
 case $tool in
   Skill) reqd "skill: $(jq -r '.tool_input.skill // ""' <<<"$in")" && exit 0 ;;
 esac
-tobs() { case $1 in */skill-observations|*/skill-observations/*|"$HOME"/.claude/skills/task-observer/*|"$HOME"/.claude/projects/*/tool-results/*) return 0 ;; esac; return 1; }
-if [ "$tool" = Bash ]; then
-  _c=$(jq -r '.tool_input.command // ""' <<<"$in"); _ok=; _bad=
-  for _w in $(grep -oE '(~|/)[^[:space:]"'"'"';|&<>()]+' <<<"$_c"); do _w=${_w/#\~/$HOME}
-    case $_w in /dev/null|/dev/std*) continue ;; esac
-    if tobs "$_w"; then _ok=1; else _bad=1; fi
-  done
-  [ -n "$_ok" ] && [ -z "$_bad" ] && exit 0
-fi
+tobs() { opening_path "$1"; }
+[ "$tool" = Bash ] && opening_bash "$(jq -r '.tool_input.command // ""' <<<"$in")" && exit 0
 case $tool in
   Read) [ -n "$rf" ] && { isdoc "$rf" && exit 0; tobs "$rf" && exit 0; [ -f "$open" ] && named "$rf" && exit 0; } ;;
   Skill) [ "$(jq -r '.tool_input.skill // ""' <<<"$in")" = task-observer ] && exit 0 ;;
-  Bash) grep -qE '^bash [^;&|]*(session-start-scan|new-observation)\.sh [^;&|]*$' <<<"$(jq -r '.tool_input.command // ""' <<<"$in")" && exit 0 ;;
   Write|Edit) case ${rf:-$f} in */skill-observations/observation-log/[0-9]*.md) exit 0 ;; esac ;;   # an observation write is not a job
 esac
 echo "$(date +%T) HOLD direction-gate: $tool" >> "$ST/enforce-$sid.log"   # not a BLOCK line: a Rule 1 hold is not friction
-echo "BLOCKED (direction-gate): Rule 1, no action without the operator's direction ($tool). Say what you would do and ask. The operator opens the job with okay or yes, or a message starting with #." >&2
+echo "BLOCKED (direction-gate): Rule 1, no action without the operator's direction ($tool). Say what you would do and ask. The operator opens the job with okay or yes, or a message with #." >&2
 exit 2
