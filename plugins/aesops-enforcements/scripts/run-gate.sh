@@ -73,15 +73,14 @@ overridden() {   # hook verb -> true when the operator's latest prompt lifts thi
     *) typed | grep -qF -- "$2" ;;
   esac
 }
-footer() {   # hook verb
-  local rev="REVOKE this rule: the operator runs gate off $1 (gate on $1 restores; $root/bin/gate)."
+footer() {   # hook verb: one line (operator 2026-11-10: the block text is read every turn after; keep it short)
+  echo "Stop, read the directions and follow them. Another route to the same thing is blocked too."   # operator's words, 2026-11-10
   case $2 in
-    '!') echo "OVERRIDE: none for the agent; the operator does it with a ! line. $rev" ;;
-    '#show-secret') echo "OVERRIDE this call: the operator types #show-secret <path>; a skipped git hook needs the operator's own ! line. $rev" ;;
-    ''|-) echo "OVERRIDE this turn: the operator says \"override\". $rev" ;;
-    *) echo "OVERRIDE this call: the operator types $2 (or \"override\", \"go ahead\" for the whole turn). $rev" ;;
+    '!') echo "Override: the operator's own ! line. Off: gate off $1." ;;
+    '#show-secret') echo "Override: the operator types #show-secret <path>. Off: gate off $1." ;;
+    ''|-) echo "Override: the operator says override. Off: gate off $1." ;;
+    *) echo "Override: the operator types $2 or override. Off: gate off $1." ;;
   esac
-  case $hard in *" $1 "*) ;; *) echo "This gate yields after ${AESOP_MAX_BLOCKS:-2} identical blocks. Do not hand the operator either/or choices to clear a gate: do what they said, or state the one thing that is missing." ;; esac
 }
 
 o=$(mktemp); e=$(mktemp); trap 'rm -f "$o" "$e"' EXIT

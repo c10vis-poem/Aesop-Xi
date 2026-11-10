@@ -71,7 +71,9 @@ named() {   # is this path named in a document already read this session (or in 
 # the session's agent (settings "agent" in the launch folder): its definition counts as an opening document
 _cwd=$(jq -r '.cwd // ""' <<<"$in" 2>/dev/null)
 _ag=$(jq -r '.agent // empty' "$_cwd/.claude/settings.json" 2>/dev/null)
-[ -n "$_ag" ] && AGENT_DEF=$(ls "$HOME"/repos/*/plugins/*/agents/"${_ag##*:}".md "$HOME"/storage/shared/Documents/NovAExorpus/plugins/*/agents/"${_ag##*:}".md 2>/dev/null | head -1)
+if [ -n "$_ag" ]; then _pl=${_ag%%:*}; [ "$_pl" = "$_ag" ] && _pl='*'
+  AGENT_DEF=$(ls "$HOME"/storage/shared/Documents/NovAExorpus/plugins/$_pl/agents/"${_ag##*:}".md "$HOME"/repos/*/plugins/$_pl/agents/"${_ag##*:}".md 2>/dev/null | head -1)
+fi
 reqd() {   # the opening protocol includes what ENFORCEMENTS requires this prompt: those reads and skills always pass
   [ -s "$ST/required-$sid.tsv" ] || return 1
   grep -qF -- "$1" "$ST/required-$sid.tsv" || grep -qF -- "${1/#$HOME/\~}" "$ST/required-$sid.tsv"
@@ -83,10 +85,20 @@ esac
 case $tool in
   Skill) reqd "skill: $(jq -r '.tool_input.skill // ""' <<<"$in")" && exit 0 ;;
 esac
+tobs() { case $1 in */skill-observations|*/skill-observations/*|"$HOME"/.claude/skills/task-observer/*|"$HOME"/.claude/projects/*/tool-results/*) return 0 ;; esac; return 1; }
+if [ "$tool" = Bash ]; then
+  _c=$(jq -r '.tool_input.command // ""' <<<"$in"); _ok=; _bad=
+  for _w in $(grep -oE '(~|/)[^[:space:]"'"'"';|&<>()]+' <<<"$_c"); do _w=${_w/#\~/$HOME}
+    case $_w in /dev/null|/dev/std*) continue ;; esac
+    if tobs "$_w"; then _ok=1; else _bad=1; fi
+  done
+  [ -n "$_ok" ] && [ -z "$_bad" ] && exit 0
+fi
 case $tool in
-  Read) [ -n "$rf" ] && { isdoc "$rf" && exit 0; [ -f "$open" ] && named "$rf" && exit 0; } ;;
+  Read) [ -n "$rf" ] && { isdoc "$rf" && exit 0; tobs "$rf" && exit 0; [ -f "$open" ] && named "$rf" && exit 0; } ;;
   Skill) [ "$(jq -r '.tool_input.skill // ""' <<<"$in")" = task-observer ] && exit 0 ;;
-  Bash) grep -qE '^bash [^;&|]*session-start-scan\.sh [^;&|]*$' <<<"$(jq -r '.tool_input.command // ""' <<<"$in")" && exit 0 ;;
+  Bash) grep -qE '^bash [^;&|]*(session-start-scan|new-observation)\.sh [^;&|]*$' <<<"$(jq -r '.tool_input.command // ""' <<<"$in")" && exit 0 ;;
+  Write|Edit) case ${rf:-$f} in */skill-observations/observation-log/[0-9]*.md) exit 0 ;; esac ;;   # an observation write is not a job
 esac
 echo "$(date +%T) HOLD direction-gate: $tool" >> "$ST/enforce-$sid.log"   # not a BLOCK line: a Rule 1 hold is not friction
 echo "BLOCKED (direction-gate): Rule 1, no action without the operator's direction ($tool). Say what you would do and ask. The operator opens the job with okay or yes, or a message starting with #." >&2

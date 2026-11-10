@@ -82,8 +82,8 @@ for h in $BLOCKERS; do
   scen "$h"; fire "$E" "$J"
   ok "$rc" 2 "$h blocks through run-gate"
   yes_ "$h: its own message" 'grep -q "BLOCKED (" "$T/err"'
-  yes_ "$h: names the revoke" 'grep -q "gate off $h" "$T/err" && grep -q "gate on $h" "$T/err"'
-  yes_ "$h: names the override" 'grep -q "OVERRIDE" "$T/err"'
+  yes_ "$h: names the revoke" 'grep -q "gate off $h" "$T/err"'
+  yes_ "$h: names the override" 'grep -q "Override:" "$T/err"'
   v=$(verb "$h"); case $v in '!') yes_ "$h: says ! line" 'grep -q "! line" "$T/err"' ;; *) yes_ "$h: names $v" 'grep -qF -- "$v" "$T/err"' ;; esac
   ok "$(fired "$E" "$h")" 1 "$h: fired once"
 done
