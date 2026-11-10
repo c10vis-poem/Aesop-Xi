@@ -96,9 +96,9 @@ fi
 so="${vault:-/nonexistent}/skill-observations"
 if [ -d "$so" ]; then
   if [ -f "$tp" ] && ! jq -e 'select(.type=="assistant") | .message.content[]? | select(.type=="tool_use" and .name=="Skill" and (.input.skill|test("task-observer")))' "$tp" >/dev/null 2>&1; then
-    miss+=("Opening O5: load the task-observer skill and run its Session Start Protocol")
+    miss+=("Opening, in this order (no okay needed): read the launch folder's AGENTS.md, MEMORY.md, RESUME.md, the handoff it points to and PENDING.md, and the files they point to; then last, load the task-observer skill and run its Session Start Protocol")
   elif [ -f "$st/resume-$sid.ok" ] && [ ! "$so/checkpoints.log" -nt "$st/resume-$sid.ok" ]; then
-    miss+=("Opening O5: run the task-observer session-start scan (it appends to skill-observations/checkpoints.log)")
+    miss+=("Opening, in this order (no okay needed): read the launch folder's AGENTS.md, MEMORY.md, RESUME.md, the handoff it points to and PENDING.md, and the files they point to; then last, run the task-observer session-start scan (it appends to skill-observations/checkpoints.log)")
   fi
   if [ -f "$st/compact-$sid" ]; then
     { read -r ct; read -r cn; } < "$st/compact-$sid"
