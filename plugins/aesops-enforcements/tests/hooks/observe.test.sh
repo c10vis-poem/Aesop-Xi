@@ -35,15 +35,19 @@ E UserPromptSubmit '{prompt:"Another Claude session sent a message:\n<agent-mess
 E UserPromptSubmit '{prompt:"no, the other file"}' >/dev/null; ok "$(ev correction)" 2 "^no matches"
 printf '%s BLOCK git-gate: git push\n%s STOP-BLOCK 2 item(s)\n' "$(date +%T)" "$(date +%T)" >> "$st/enforce-S1.log"
 out=$(SG); ok "$(ev block)" 1 "gate BLOCK line imported (STOP-BLOCK not)"
-ok "$(grep -c '^- Friction event e' <<<"$out")" 5 "stop blocked: one line per open event"
+ok "$(grep -c 'riction event' <<<"$out")" 0 "mid-session: friction events go to the session log, no stop block (operator 2026-11-09)"
+ok "$(grep -ch ' e[0-9]* [a-z-]*:' "$st"/recaps/*.md)" 6 "each event written to the session log as it happens (6: the Edit failure removed from the queue above was already logged)"
 SG >/dev/null; ok "$(ev block)" 1 "BLOCK line imported once"
 ok "$(SG true | wc -c | tr -d ' ')" 0 "stop_hook_active + no event resolved -> yields (no loop)"
 id=$(grep "	denied	" "$q" | cut -f1)
 bash "$D" "$id" >/dev/null 2>&1; ok "$?" 1 "dismiss without reason refused"
 bash "$D" e0 "x" >/dev/null 2>&1; ok "$?" 1 "dismiss of unknown id refused"
-bash "$D" "$id" "classifier was right" >/dev/null; ok "$(SG | grep -c '^- Friction event')" 4 "dismissed event no longer blocks"
+bash "$D" "$id" "classifier was right" >/dev/null
+touch "$st/wrapup-S1"; ok "$(SG | grep -c 'friction event')" 0 "wrap-up: every event in the session log -> nothing owed"
+rid=$(grep "	tool-fail	" "$q" | head -1 | cut -f1); sed -i "/ $rid /d" "$st"/recaps/*.md
+ok "$(SG | grep -c "friction event $rid .*missing from the session log")" 1 "wrap-up: an event missing from the session log -> named"
 bash "$D" "$(grep "	block	" "$q" | cut -f1)" "expected git-gate block" >/dev/null
-ok "$(SG true | grep -c '^- Friction event')" 3 "stop_hook_active after progress -> still blocks"
+ok "$(SG | grep -c "friction event $id ")" 0 "wrap-up: a dismissed event is not owed"; rm -f "$st/wrapup-S1"
 ok "$(bash "$D" list | grep -c dismissed)" 2 "list shows the dismissals"
 touch -d '+5 sec' "$so/observation-log/0001-x.md"
 ok "$(SG | wc -c | tr -d ' ')" 0 "observation written after the events -> stop allowed"
