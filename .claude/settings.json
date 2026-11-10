@@ -331,14 +331,14 @@
       "source": {
         "source": "github",
         "repo": "c10vis-poem/NovAExopia",
-        "ref": "rules-fix-2026-11-09"
+        "ref": "main"
       }
     },
     "nvaex-vault": {
       "source": {
         "source": "github",
         "repo": "c10vis-poem/NovAExorpus",
-        "ref": "rules-fix-2026-11-09"
+        "ref": "main"
       }
     },
     "aesop-xi": {

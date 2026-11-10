@@ -74,6 +74,7 @@ overridden() {   # hook verb -> true when the operator's latest prompt lifts thi
   esac
 }
 footer() {   # hook verb: one line (operator 2026-11-10: the block text is read every turn after; keep it short)
+  echo "Stop, read the directions and follow them. Another route to the same thing is blocked too."   # operator's words, 2026-11-10
   case $2 in
     '!') echo "Override: the operator's own ! line. Off: gate off $1." ;;
     '#show-secret') echo "Override: the operator types #show-secret <path>. Off: gate off $1." ;;
