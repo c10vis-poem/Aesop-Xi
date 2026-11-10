@@ -50,3 +50,9 @@ Durable facts about this repo. Dated; newest first. Updated at session wrap-up.
 - The `test-ship-v2` note above is stale: all 22 hook test suites pass at #77.
 - Dropped by the operator: OmniRoute, mem0, Terrestrial Brain, OpenWiki. The AGENTS.md runtime-memory sections were replaced with a pointer.
 - Operator rule: nothing in any repo or config is turned off without the operator naming it (11 fork workflows were disabled and re-enabled the same day).
+
+## 2026-11-10 (session 437a362c)
+- `aesops-enforcements` lives here now (`plugins/aesops-enforcements/`, marketplace `aesop-xi`), moved from NovAExopia.
+  The operator's rules: RULES.md inside it (Rules 4, 7, 8, 9, 10 sub-agents, 12 read orders, rewritten 2026-11-10).
+- The plugin's tests: 743+ checks pass; observe (3) and staged-updates (2) tests are stale against the 2026-11-09
+  note-not-block decisions.

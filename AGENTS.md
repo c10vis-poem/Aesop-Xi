@@ -171,9 +171,11 @@ This file only loads automatically when a session's working directory is inside
 this repo. A session started elsewhere (e.g. `~/downloads`) will not see it or
 `RESUME.md`/`PENDING.md` unless it's explicitly pointed here.
 
-## What loads in this repo, for every agent (operator, 2026-11-09)
-This file is the authority; `CLAUDE.md` only points here.
-- **Claude Code:** `.claude/settings.json` enables the rules and hooks plugin `aesops-enforcements`, the Frankenstein plugins (jev-core, memory, rea-forge, burn, claw-mcp, ui-cockpit; marketplace `novaexopia` = NovAExopia on GitHub) and greedy-crane (marketplace `nvaex-vault` = NovAExorpus). They bring their hooks and MCP servers.
-- **MCP for any agent:** this repo's `.mcp.json` starts claw, chrome-devtools, jev-rea-mcp, dumbass-memory, rea-mcp and burn-mcp from NovAExopia (`$NOVAEXOPIA_ROOT`, default `~/repos/NovAExopia-main`).
-- **AGY:** `.agents/plugins.json` registers the Frankenstein plugins from NovAExopia.
-- Marketplace sources point at branch `rules-fix-2026-11-09` until it reaches main; then they point at `main`.
+## What loads in this repo, for every agent (operator, 2026-11-10)
+- **Rules and hooks live here:** `plugins/aesops-enforcements/` (RULES.md, the gates, the gate CLI, tests), listed by
+  this repo's marketplace `.claude-plugin/marketplace.json` (`aesop-xi`). Every repo's `.claude/settings.json` and the
+  user settings enable `aesops-enforcements@aesop-xi`. One copy only.
+- **Claude Code:** `.claude/settings.json` also enables the NovAExopia plugins (`plugins/<name>/` there, marketplace
+  `novaexopia`) and greedy-crane (marketplace `nvaex-vault`).
+- **Other agents:** DSH, AGY and Hermes need adapters that call the same hook scripts (not built).
+- The older `hooks/` folder here holds the previous hook set (live copies in `~/.claude/hooks/`); the plugin replaces it.

@@ -340,16 +340,22 @@
         "repo": "c10vis-poem/NovAExorpus",
         "ref": "rules-fix-2026-11-09"
       }
+    },
+    "aesop-xi": {
+      "source": {
+        "source": "directory",
+        "path": "/data/data/com.termux/files/home/repos/Aesop-Xi"
+      }
     }
   },
   "enabledPlugins": {
-    "aesops-enforcements@novaexopia": true,
     "nvaex-jev-core@novaexopia": true,
     "nvaex-memory@novaexopia": true,
     "nvaex-rea-forge@novaexopia": true,
     "nvaex-burn@novaexopia": true,
     "claw-mcp@novaexopia": true,
     "nvaex-ui-cockpit@novaexopia": true,
-    "greedy-crane@nvaex-vault": true
+    "greedy-crane@nvaex-vault": true,
+    "aesops-enforcements@aesop-xi": true
   }
 }

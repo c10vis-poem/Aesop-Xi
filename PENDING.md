@@ -47,3 +47,9 @@ Durable cross-session backlog. Not rewritten each session — items persist unti
 - Re-engineer the hooks before turning any back on (operator order; all stubbed 2026-10-28). Start with resume-gate (obs 0051). Decide whether the gitleaks git hook stays on.
 - Install the `intake` skill after merge (link `skills/intake` into `~/.claude/skills`) and run it on a real dictated prompt.
 - Build pipeline stages 1-4 (context fan-out, orchestrator with Jev, proposal, auditor) per `docs/intake-pipeline-spec.md`.
+
+## 2026-11-10 (session 437a362c)
+- Adapters so DSH, AGY and Hermes run the same aesops-enforcements hook scripts (their hook docs not read yet).
+- `hooks/` (the old hook set) and the live `~/.claude/hooks/` copies: retire once the plugin is the only route.
+- RULES.md table still uses the old ten-rule numbering; renumber to the operator's twelve.
+- Update the stale observe and staged-updates tests.
