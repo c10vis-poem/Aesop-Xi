@@ -1,5 +1,5 @@
 {
-  "disableAllHooks": true,
+  "disableAllHooks": false,
   "hooks": {
     "SessionStart": [
       {
@@ -325,5 +325,31 @@
         ]
       }
     ]
+  },
+  "extraKnownMarketplaces": {
+    "novaexopia": {
+      "source": {
+        "source": "github",
+        "repo": "c10vis-poem/NovAExopia",
+        "ref": "rules-fix-2026-11-09"
+      }
+    },
+    "nvaex-vault": {
+      "source": {
+        "source": "github",
+        "repo": "c10vis-poem/NovAExorpus",
+        "ref": "rules-fix-2026-11-09"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "aesops-enforcements@novaexopia": true,
+    "nvaex-jev-core@novaexopia": true,
+    "nvaex-memory@novaexopia": true,
+    "nvaex-rea-forge@novaexopia": true,
+    "nvaex-burn@novaexopia": true,
+    "claw-mcp@novaexopia": true,
+    "nvaex-ui-cockpit@novaexopia": true,
+    "greedy-crane@nvaex-vault": true
   }
 }
