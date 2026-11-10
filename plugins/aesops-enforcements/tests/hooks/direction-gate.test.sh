@@ -44,4 +44,7 @@ ok "$(G Read "$R2/Aesop-Xi/plugins/x/RULES.md")" 0 "'Aesop-Xi \`plugins/x/RULES.
 ok "$(G Read "$R2/NvAEx-Recaps/memory/general.md")" 0 "path inside the handoff's own repo -> readable"
 ok "$(G Read "$R2/Other/RULES.md")" 2 "same inside path in another repo the docs never name -> blocked"
 ok "$(G Read "$R2/NvAEx-Recaps/memory/active/e.md")" 0 "named in ~/.agents/AGENTS.md (loaded every session) -> readable"
+ok "$(G Write "$T/v/skill-observations/observation-log/0090-x.md")" 0 "closed: writing an observation passes (no loop with the friction line)"
+ok "$(G Bash "" "bash /x/scripts/new-observation.sh slug /v")" 0 "closed: the observation helper passes"
+ok "$(G Write "$T/v/skill-observations/other.md")" 2 "closed: other writes in the vault still blocked"
 echo "direction-gate.test.sh passed=$pass failed=$fail"; [ "$fail" = 0 ]

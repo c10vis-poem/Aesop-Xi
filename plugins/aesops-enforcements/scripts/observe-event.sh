@@ -52,6 +52,6 @@ case $(jq -r '.hook_event_name // ""' <<<"$in") in
     grep -qE '<agent-message|<task-notification>|^Another Claude session sent a message' <<<"$p" && exit 0   # subagent hand-backs are not the operator
     grep -qiE -f <(grep -vE '^[[:space:]]*(#|$)' "$(dirname "$(realpath "$0")")/observe-corrections.txt" 2>/dev/null) <<<"$p" || exit 0
     id=$(add correction "$p")
-    echo "OBSERVE: this prompt reads as an operator correction, queued as $id. Log it as a task-observer observation, or: observe-dismiss $id \"<reason>\"" ;;
+    echo "OBSERVE: correction $id noted in the session log." ;;   # no demand: friction events go to the session log (operator 2026-11-09)
 esac
 exit 0

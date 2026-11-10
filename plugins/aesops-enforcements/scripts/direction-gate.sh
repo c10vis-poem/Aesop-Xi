@@ -86,7 +86,8 @@ esac
 case $tool in
   Read) [ -n "$rf" ] && { isdoc "$rf" && exit 0; [ -f "$open" ] && named "$rf" && exit 0; } ;;
   Skill) [ "$(jq -r '.tool_input.skill // ""' <<<"$in")" = task-observer ] && exit 0 ;;
-  Bash) grep -qE '^bash [^;&|]*session-start-scan\.sh [^;&|]*$' <<<"$(jq -r '.tool_input.command // ""' <<<"$in")" && exit 0 ;;
+  Bash) grep -qE '^bash [^;&|]*(session-start-scan|new-observation)\.sh [^;&|]*$' <<<"$(jq -r '.tool_input.command // ""' <<<"$in")" && exit 0 ;;
+  Write|Edit) case ${rf:-$f} in */skill-observations/observation-log/[0-9]*.md) exit 0 ;; esac ;;   # an observation write is not a job
 esac
 echo "$(date +%T) HOLD direction-gate: $tool" >> "$ST/enforce-$sid.log"   # not a BLOCK line: a Rule 1 hold is not friction
 echo "BLOCKED (direction-gate): Rule 1, no action without the operator's direction ($tool). Say what you would do and ask. The operator opens the job with okay or yes, or a message starting with #." >&2
