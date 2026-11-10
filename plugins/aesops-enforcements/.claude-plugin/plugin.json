@@ -1,0 +1,9 @@
+{
+  "name": "aesops-enforcements",
+  "version": "0.2.0",
+  "description": "The ten rules, all on, everywhere: every hook runs under one of them, one launcher, override and revoke named in every block, loop breaker, gate CLI, kill switches, cloud degrade.",
+  "author": {
+    "name": "The Builder"
+  },
+  "license": "MIT"
+}

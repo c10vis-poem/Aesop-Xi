@@ -170,3 +170,12 @@ of this rule, not a valid alternative to it. Don't let work sit stranded.
 This file only loads automatically when a session's working directory is inside
 this repo. A session started elsewhere (e.g. `~/downloads`) will not see it or
 `RESUME.md`/`PENDING.md` unless it's explicitly pointed here.
+
+## What loads in this repo, for every agent (operator, 2026-11-10)
+- **Rules and hooks live here:** `plugins/aesops-enforcements/` (RULES.md, the gates, the gate CLI, tests), listed by
+  this repo's marketplace `.claude-plugin/marketplace.json` (`aesop-xi`). Every repo's `.claude/settings.json` and the
+  user settings enable `aesops-enforcements@aesop-xi`. One copy only.
+- **Claude Code:** `.claude/settings.json` also enables the NovAExopia plugins (`plugins/<name>/` there, marketplace
+  `novaexopia`) and greedy-crane (marketplace `nvaex-vault`).
+- **Other agents:** DSH, AGY and Hermes need adapters that call the same hook scripts (not built).
+- The older `hooks/` folder here holds the previous hook set (live copies in `~/.claude/hooks/`); the plugin replaces it.
