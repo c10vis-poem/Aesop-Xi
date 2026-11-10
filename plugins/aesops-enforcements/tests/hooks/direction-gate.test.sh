@@ -30,4 +30,18 @@ for p in "you need to think about it" "okayish" "goal is x" "yesterday it broke"
 U "#one job"; for i in 1 2 3 4 5 6 7 8 9 10; do r=$(G Bash "" ls); [ "$r" = 0 ] || break; done; ok "$r" 0 "one opening covers many steps"
 [ -f "$T/.claude/state/resume-S.ok" ]; ok $? 0 "session marker written for other gates"
 grep -q '^read:AGENTS.md' "$T/.claude/state/opening-S.tsv"; ok $? 0 "opening ledger recorded"
+# Opening reads named the way the docs write them (crane test 2026-11-10): "<repo> `inside/path`", and files named in
+# the always-loaded instructions (~/.agents/AGENTS.md) or in the session agent's definition.
+export REPOS_DIR=$T/repos; R2=$REPOS_DIR
+mkdir -p "$R2/Aesop-Xi/plugins/x" "$R2/NvAEx-Recaps/handoff/h" "$R2/NvAEx-Recaps/memory/active" "$T/.agents" "$R2/Other"
+: > "$R2/Aesop-Xi/plugins/x/RULES.md"; : > "$R2/NvAEx-Recaps/memory/general.md"; : > "$R2/NvAEx-Recaps/memory/active/e.md"; : > "$R2/Other/RULES.md"
+printf 'Details: Aesop-Xi `plugins/x/RULES.md` and `memory/general.md`.\n' > "$R2/NvAEx-Recaps/handoff/h/handoff.md"
+printf 'Shared memory: NvAEx-Recaps `memory/active/e.md`.\n' > "$T/.agents/AGENTS.md"
+U "stop"   # close the job opened above: only the opening reads pass
+ok "$(G Read "$R2/Aesop-Xi/plugins/x/RULES.md")" 2 "before the handoff is read: blocked"
+ok "$(G Read "$R2/NvAEx-Recaps/handoff/h/handoff.md")" 0 "handoff readable (opening document)"
+ok "$(G Read "$R2/Aesop-Xi/plugins/x/RULES.md")" 0 "'Aesop-Xi \`plugins/x/RULES.md\`' in the handoff -> readable"
+ok "$(G Read "$R2/NvAEx-Recaps/memory/general.md")" 0 "path inside the handoff's own repo -> readable"
+ok "$(G Read "$R2/Other/RULES.md")" 2 "same inside path in another repo the docs never name -> blocked"
+ok "$(G Read "$R2/NvAEx-Recaps/memory/active/e.md")" 0 "named in ~/.agents/AGENTS.md (loaded every session) -> readable"
 echo "direction-gate.test.sh passed=$pass failed=$fail"; [ "$fail" = 0 ]

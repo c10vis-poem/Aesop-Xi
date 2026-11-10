@@ -10,5 +10,16 @@ mk "$(date -d '9 days ago' +%F)"; ok "$(c)" "HOUSEKEEPING DUE (9 days ago)" "9 d
 mk "$(date +%F)";                 ok "$(c)" "" "run today is quiet"
 mk never; ok "$(bash "$S/housekeeping-check.sh" | grep -c '^- ')" 2 "routine lines shown"
 rm "$PENDING_FILE"; ok "$(c)" "" "no PENDING.md: quiet"
+# stale "RESUME not rewritten" flag (crane test 2026-11-10): cleared once a RESUME.md is dated after the flagged session
+mkdir -p "$T/.claude/state" "$T/v"; F=$T/.claude/state/last-session-resume.flag; mk "$(date +%F)"
+echo "missing 89c1bc9d 2026-10-28" > "$F"; printf '# RESUME
+Last updated: 2026-10-01
+' > "$T/v/RESUME.md"
+ok "$(VAULT=$T/v bash "$S/housekeeping-check.sh" | grep -c 'without rewriting RESUME')" 1 "older RESUME: warning stays"
+printf '# RESUME
+Last updated: 2026-11-10
+' > "$T/v/RESUME.md"
+ok "$(VAULT=$T/v bash "$S/housekeeping-check.sh" | grep -c 'without rewriting RESUME')" 0 "RESUME dated after the flag: no warning"
+ok "$(cut -d' ' -f1 "$F")" ok "and the flag is cleared"
 ok "$(grep -c 'DEGRADE housekeeping-check' "$T/.claude/state/hooks.log")" 1 "no PENDING.md: logged"
 echo "== $pass passed, $fail failed"; [ "$fail" -eq 0 ]

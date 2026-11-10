@@ -5,7 +5,15 @@
 . "$(dirname "$(realpath "$0")")/lib/env.sh"
 P=${PENDING_FILE:-${VAULT:-/nonexistent}/PENDING.md}
 F="$HOME/.claude/state/last-session-resume.flag"
-[ "${1:-}" = due ] || [ ! -f "$F" ] || ! grep -q '^missing' "$F" || echo "WARNING: last session ended without rewriting RESUME.md ($(cut -d' ' -f2- "$F")). Fix that first."
+# A "missing" flag is stale once a RESUME.md (the vault's, or the launch repo's) carries a date after the flagged session's.
+if [ -f "$F" ] && grep -q '^missing' "$F"; then
+  fd=$(awk '{print $3}' "$F"); newest=
+  for r in "${VAULT:-/nonexistent}/RESUME.md" "${CLAUDE_PROJECT_DIR:-$PWD}/RESUME.md"; do
+    [ -f "$r" ] || continue; d=$(resume_date "$r"); [ -n "$d" ] && [ "$d" \> "${newest:-0}" ] && newest=$d
+  done
+  if [ -n "$newest" ] && [ -n "$fd" ] && [ "$newest" \> "$fd" ]; then echo "ok (cleared: RESUME.md dated $newest)" > "$F"
+  elif [ "${1:-}" != due ]; then echo "WARNING: last session ended without rewriting RESUME.md ($(cut -d' ' -f2- "$F")). Fix that first."; fi
+fi
 [ -f "$P" ] || { degrade housekeeping "housekeeping-check: no PENDING.md at $P"; exit 0; }
 last=$(sed -n 's/^last-housekeeping: *\([0-9-]*\).*/\1/p' "$P" | head -1)
 today=$(date +%s); dow=$(date +%u)   # 1=Mon .. 7=Sun

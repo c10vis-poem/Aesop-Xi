@@ -43,15 +43,35 @@ isdoc() { case ${1##*/} in AGENTS.md|MEMORY.md|RESUME.md|HANDOFF.md|handoff.md|P
 [ "$tool" = Read ] && [ -n "$rf" ] && isdoc "$rf" && printf 'read:%s\t%s\t%s\n' "${rf##*/}" "$rf" "$(date +%T)" >> "$open"
 [ -f "$job" ] && exit 0
 
-named() {   # is this path named in a document already read this session?
-  local short=${1/#$HOME/\~} doc
-  while IFS=$'\t' read -r _ doc _; do
+root_of() {  # path -> "<repo name><TAB><path inside it>" for repos and the vault (both spellings of shared storage)
+  local p=$1 R V1 V2
+  R=$(realpath -m "${REPOS_DIR:-$HOME/repos}"); V1=$(realpath -m "${VAULT:-/nonexistent}"); V2=$HOME/storage/shared/Documents/NovAExorpus
+  case $p in
+    "$V1"/*|"$V2"/*|/storage/emulated/0/Documents/NovAExorpus/*) p=${p#"$V1"/}; p=${p#"$V2"/}; p=${p#/storage/emulated/0/Documents/NovAExorpus/}; printf 'NovAExorpus\t%s\n' "$p" ;;
+    "$R"/*) p=${p#"$R"/}; printf '%s\t%s\n' "${p%%/*}" "${p#*/}" ;;
+  esac
+}
+named() {   # is this path named in a document already read this session (or in the session's agent definition)?
+  local short=${1/#$HOME/\~} doc repo rel docs
+  IFS=$'\t' read -r repo rel < <(root_of "$1")
+  # read this session, plus what loads into every session without a Read: the global and launch-folder instructions
+  docs=$(cut -f2 "$open" 2>/dev/null; [ -n "${AGENT_DEF:-}" ] && echo "$AGENT_DEF"
+         printf '%s\n' "$HOME/.agents/AGENTS.md" "$HOME/.claude/CLAUDE.md" "$_cwd/AGENTS.md" "$_cwd/CLAUDE.md")
+  while IFS= read -r doc; do
     [ -f "$doc" ] || continue
     grep -qF -- "$1" "$doc" && return 0; grep -qF -- "$short" "$doc" && return 0
     case $1 in "${doc%/*}"/*) grep -qF -- "${1#"${doc%/*}"/}" "$doc" && return 0 ;; esac
-  done < "$open"
+    if [ -n "$rel" ] && [ "$rel" != "$1" ]; then
+      # "<repo> `path/inside`": the repo named anywhere in the document and the inside path in it
+      grep -qF -- "$rel" "$doc" && { grep -qiF -- "$repo" "$doc" || [ "$(root_of "$(realpath -m "$doc")" | cut -f1)" = "$repo" ]; } && return 0
+    fi
+  done <<<"$docs"
   return 1
 }
+# the session's agent (settings "agent" in the launch folder): its definition counts as an opening document
+_cwd=$(jq -r '.cwd // ""' <<<"$in" 2>/dev/null)
+_ag=$(jq -r '.agent // empty' "$_cwd/.claude/settings.json" 2>/dev/null)
+[ -n "$_ag" ] && AGENT_DEF=$(ls "$HOME"/repos/*/plugins/*/agents/"${_ag##*:}".md "$HOME"/storage/shared/Documents/NovAExorpus/plugins/*/agents/"${_ag##*:}".md 2>/dev/null | head -1)
 reqd() {   # the opening protocol includes what ENFORCEMENTS requires this prompt: those reads and skills always pass
   [ -s "$ST/required-$sid.tsv" ] || return 1
   grep -qF -- "$1" "$ST/required-$sid.tsv" || grep -qF -- "${1/#$HOME/\~}" "$ST/required-$sid.tsv"
