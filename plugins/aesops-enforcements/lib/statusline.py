@@ -33,6 +33,8 @@ def render(inp):
         parts.append("lifted: " + ",".join(ov))
     if st.get("quote"):
         parts.append("quiz pending")
+    if st.get("fp_warn"):
+        parts.append(f"WARN {len(st['fp_warn'])} protected file(s) changed outside git")
     line = " | ".join(parts)
     return line + ("\n" + first[:140] if first else "")
 

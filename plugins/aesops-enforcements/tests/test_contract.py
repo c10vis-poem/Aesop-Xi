@@ -12,6 +12,17 @@ os.environ["CONTRACT_OWNER_DIR"] = os.path.join(TMP, "owner")
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 import contract as C  # noqa: E402
 
+ENV = {k: os.environ[k] for k in ("HOME", "CONTRACT_STATE", "CONTRACT_OWNER_DIR")}
+
+
+def setUpModule():
+    """Both test files share one imported contract module: put this file's folders back before its tests."""
+    os.environ.update(ENV)
+    C.HOME = ENV["HOME"]
+    C.STATE = os.path.realpath(ENV["CONTRACT_STATE"])
+    C.OWNER_DIR = os.path.realpath(ENV["CONTRACT_OWNER_DIR"])
+
+
 ROOT = os.path.realpath(os.path.join(TMP, "proj"))
 os.makedirs(os.path.join(ROOT, "docs"), exist_ok=True)
 DOC = os.path.join(ROOT, "docs", "guide.md")

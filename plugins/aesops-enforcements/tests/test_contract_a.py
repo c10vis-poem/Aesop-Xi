@@ -12,6 +12,17 @@ os.environ["CONTRACT_OWNER_DIR"] = os.path.join(TMP, "owner")
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 import contract as C  # noqa: E402
 
+ENV = {k: os.environ[k] for k in ("HOME", "CONTRACT_STATE", "CONTRACT_OWNER_DIR")}
+
+
+def setUpModule():
+    """Both test files share one imported contract module: put this file's folders back before its tests."""
+    os.environ.update(ENV)
+    C.HOME = ENV["HOME"]
+    C.STATE = os.path.realpath(ENV["CONTRACT_STATE"])
+    C.OWNER_DIR = os.path.realpath(ENV["CONTRACT_OWNER_DIR"])
+
+
 HOME = os.environ["HOME"]
 ROOT = os.path.realpath(os.path.join(TMP, "proj"))
 OTHER = os.path.realpath(os.path.join(TMP, "other"))
@@ -322,14 +333,57 @@ class StopGate(unittest.TestCase):
         self.assertLessEqual(out.count("\n- "), 13)
 
 
-class Refingerprint(unittest.TestCase):
-    def test_owner_refingerprint_resumes(self):
+class Fingerprint(unittest.TestCase):
+    """Owner, 2026-11-11: accept git changes, warn on the rest, never lock the owner."""
+
+    def setUp(self):
+        import shutil
+        import subprocess
+        self.run_git = lambda *a: subprocess.run(["git", "-C", self.plug, "-c", "user.name=t",
+                                                  "-c", "user.email=t@t", *a], capture_output=True, check=True)
+        self.real = C.PLUGIN_ROOT
+        self.plug = tempfile.mkdtemp(prefix="plug-", dir=TMP)
+        shutil.copytree(os.path.join(self.real, "salary"), os.path.join(self.plug, "salary"))
+        self.f = os.path.join(self.plug, "lib.py")
+        with open(self.f, "w") as fh:
+            fh.write("one\n")
+        self.run_git("init", "-q")
+        self.run_git("add", "-A")
+        self.run_git("commit", "-qm", "one")
+        C.PLUGIN_ROOT = self.plug
+
+    def tearDown(self):
+        C.PLUGIN_ROOT = self.real
+
+    def test_git_change_is_accepted_silently(self):
+        s = signed()
+        with open(self.f, "w") as fh:
+            fh.write("two\n")
+        self.run_git("commit", "-qam", "two")  # the owner's own terminal: no hook sees it
+        out = s.prompt("go on")
+        self.assertNotIn("changed outside git", out)
+        self.assertEqual(s.state()["phase"], "ACTIVE")
+        self.assertTrue(any(e.get("kind") == "fp-accept-git" for e in C.ledger(s.sid)))
+
+    def test_other_change_warns_once_never_pauses(self):
+        s = signed()
+        with open(self.f, "w") as fh:
+            fh.write("hand edit\n")
+        self.assertEqual(s.call("Bash", command="echo hi"), "allow")  # no pause
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+        import statusline
+        self.assertIn("WARN 1 protected", statusline.render({"session_id": s.sid}))
+        self.assertIn("changed outside git", s.prompt("go on"))
+        self.assertNotIn("changed outside git", s.prompt("and again"))
+        self.assertEqual(s.state()["phase"], "ACTIVE")
+        self.assertIn("Protected", s.call("Write", file_path=self.f, content="agent write"))
+
+    def test_old_pause_is_lifted(self):
         s = signed()
         st = s.state()
         C._freeze(s.sid, st, ["x"])
         C.save_state(s.sid, st)
-        C.fp_save(s.sid)  # what the owner's refingerprint command does
-        self.assertIn("re-fingerprinted", s.prompt("go on"))
+        self.assertIn("pause is gone", s.prompt("go on"))
         self.assertEqual(s.state()["phase"], "ACTIVE")
 
 

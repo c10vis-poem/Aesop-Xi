@@ -82,8 +82,9 @@ Overrides never lift protection.
 The agent cannot write the session folder (except `notes.md` and `proposal.md`), contracts, owner copies, the
 plugin itself, `.contract/` folders, or any `.claude` / `.gemini` settings file; cannot print secret files; cannot
 skip or reroute git hooks. Paths are checked after `~`, `$HOME`, `..` and symlinks are resolved. Plugins and
-settings change only by the owner's hand. A change to a protected file pauses the session until the owner
-re-fingerprints it (`python3 -I <plugin>/lib/hook.py refingerprint <session id>`); then work continues.
+settings change only by the owner's hand. Protected files are fingerprinted, but a change never pauses the
+session (never lock the owner): a change that matches git's HEAD (commit, merge, pull, by anyone) is accepted and
+logged; any other change is logged and warned once, in the status bar and the next prompt note.
 
 ## 9. Runs and scores
 The first run is `A`; `#ok` accepts it; `#redo` makes the next signed run `A2` (the first renamed `A1`).

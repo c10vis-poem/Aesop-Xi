@@ -316,7 +316,7 @@ def fingerprint(sid):
     out = {}
     for base in (PLUGIN_ROOT, os.path.join(sdir(sid), "contracts"), OWNER_DIR):
         for dp, dn, fn in os.walk(base):
-            dn[:] = [d for d in dn if d != "__pycache__"]
+            dn[:] = [d for d in dn if d not in ("__pycache__", ".git")]
             for n in fn:
                 if n in FP_SKIP or (base == OWNER_DIR and not n.startswith(sid[:8])):
                     continue
@@ -343,6 +343,49 @@ def fp_changed(sid):
         return ["fingerprint.json (missing or unreadable)"]
     new = fingerprint(sid)
     return sorted(p for p in set(old) | set(new) if old.get(p) != new.get(p))
+
+
+def _git_matches_head(path):
+    """True when the file on disk is exactly what git's HEAD holds for it (or both lack it): the change came
+    through git (commit, merge, pull, switch), whoever ran it, the agent or the owner in his own terminal."""
+    try:
+        r = subprocess.run(["git", "-C", PLUGIN_ROOT, "rev-parse", "--show-toplevel"],
+                           capture_output=True, text=True, timeout=5)
+        if r.returncode != 0 or not r.stdout.strip():
+            return False
+        top = os.path.realpath(r.stdout.strip())
+        if not under(path, top):
+            return False
+        r = subprocess.run(["git", "-C", top, "show", "HEAD:" + os.path.relpath(path, top)],
+                           capture_output=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    if r.returncode != 0:
+        return not os.path.exists(path)  # gone from HEAD and from disk
+    try:
+        with open(path, "rb") as f:
+            return f.read() == r.stdout
+    except OSError:
+        return False
+
+
+def fp_review(sid, st):
+    """Never pauses the session (owner, 2026-11-11: never lock the owner). Changes that match git's HEAD are
+    accepted and logged; any other change is logged, kept in st['fp_warn'] for the status bar and the next
+    prompt note, and warned once: the fingerprint is re-taken either way. Agent writes stay refused by
+    protection(), which this does not touch. Returns the warned paths."""
+    bad = fp_changed(sid)
+    if not bad:
+        return []
+    by_git = [p for p in bad if _git_matches_head(p)]
+    other = [p for p in bad if p not in by_git]
+    if by_git:
+        log(sid, kind="fp-accept-git", files=by_git)
+    if other:
+        log(sid, kind="fp-warn", files=other)
+        st["fp_warn"] = sorted(set(st.get("fp_warn") or []) | set(other))[:20]
+    fp_save(sid)
+    return other
 
 
 def open_contract(sid, st, label, text):
@@ -451,13 +494,12 @@ def on_prompt(inp):
     sid = inp.get("session_id", "")
     st = ensure(sid, inp.get("cwd"))
     verbs = parse_verbs(inp.get("prompt", ""))
-    bad = fp_changed(sid)
     notes = []
-    if bad:
-        _freeze(sid, st, bad)
-    elif st["phase"] == "FROZEN" and st.get("frozen_from"):
-        st["phase"], st["frozen_from"] = st["frozen_from"], None  # the owner re-fingerprinted: carry on
-        notes.append("Protected files re-fingerprinted by the owner; the session continues.")
+    fp_review(sid, st)
+    warned = st.pop("fp_warn", None) or []
+    if st["phase"] == "FROZEN" and st.get("frozen_from"):
+        st["phase"], st["frozen_from"] = st["frozen_from"], None  # an old fingerprint pause: lifted
+        notes.append("The fingerprint pause is gone (protected-file changes now only warn); the session continues.")
     st["turn_start"] = now()
     task_n = _task_number(sid, st)
     _expire_overrides(st, task_n)
@@ -492,12 +534,9 @@ def on_prompt(inp):
         notes.append("The owner approved the push (#push): lines held 'after: #push' are now open.")
     if st.get("stopped_unmet"):
         notes.append("Last turn ended with requirements unmet: " + "; ".join(st.pop("stopped_unmet")))
-    if bad:
-        notes.append("Protected files changed since the last check; session frozen: " + ", ".join(bad[:10])
-                     + ". The owner re-fingerprints with: python3 -I " + os.path.join(PLUGIN_ROOT, "lib", "hook.py")
-                     + " refingerprint " + sid)
-    else:
-        fp_save(sid)
+    if warned:
+        notes.append("Protected files changed outside git (not paused, warned once): " + ", ".join(warned[:10]))
+    fp_save(sid)  # takes in what this prompt itself wrote (a signed contract, its owner copy)
     save_state(sid, st)
     notes.append(status_line(sid, st))
     return {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
@@ -1006,14 +1045,8 @@ def on_pretool(inp):
     st = ensure(sid, inp.get("cwd"))
     tool, ti = inp.get("tool_name", ""), inp.get("tool_input", {}) or {}
     agent = inp.get("agent_id")
-    bad = fp_changed(sid)
-    if bad:
-        _freeze(sid, st, bad)
+    if fp_review(sid, st):
         save_state(sid, st)
-        if tool == "Read":
-            return None
-        return _deny(sid, st, tool, ti, agent, "Protected files changed: " + ", ".join(bad[:5])
-                     + ". Session paused until the owner re-fingerprints it.", count=False)
     r = protection(sid, tool, ti)
     if r:
         return _deny(sid, st, tool, ti, agent, r, count=st["phase"] == "ACTIVE")
@@ -1474,13 +1507,7 @@ def on_stop(inp):
     st = load_state(sid)
     if st is None:
         return None
-    bad = fp_changed(sid)
-    if bad:
-        st["phase"] = "FROZEN"
-        st["stopped_unmet"] = ["protected files changed, session frozen: " + ", ".join(bad[:10])]
-        log(sid, kind="tamper", files=bad)
-        save_state(sid, st)
-        return None
+    fp_review(sid, st)  # warns, never pauses
     msg = inp.get("last_assistant_message", "")
     phase = st["phase"]
     task_n = _task_number(sid, st)
