@@ -7,17 +7,10 @@ session or model. Created 2026-08-31
 — previously nonexistent despite RESUME.md
 implying a handoff process was already in place.
 
-## Operator Rule 1 — no action without an explicit prompt
+## Rules: contract enforcement (owner, 2026-11-11)
 
-A skipped or unanswered question is NOT consent. No action — reading,
-searching, or anything else — without an explicit prompt or permitted
-request. State-changing or not, it doesn't matter.
-
-## Operator Rule 2 — read this file and RESUME.md first
-
-Before doing anything else in this repo, read this AGENTS.md and RESUME.md.
-Standing convention across the operator's repos for months — step one,
-every session, no exceptions. (Complements the session-handoff workflow below.)
+The owner's rules are `plugins/aesops-enforcements/RULES.md`. No work of any kind without a signed contract (`#go`),
+a freelance contract or an approved salary task. One gate, one stop gate, one ledger enforce it.
 
 ## Session handoff workflow
 
@@ -106,10 +99,6 @@ re-discover these from scratch:
   plugins listed). Deferred to a future flash session — see `PENDING.md` in
   NovAExorpus.
 
-## Enforcement hooks travel with this repo (2026-10-02; cloud rules 2026-10-24)
-
-`.claude/settings.json` registers every hook (RESUME/check-in/Stop gates, sync-on-use, ledger, change-log, observer events, ship-session, secret-guard, ENFORCEMENTS gate, prompt classifier, branch/git gates, state/settings guards, build-doc, agent-type, delegation tripwire, SubagentStop, context-diff, housekeeping, archive) through `hooks/run-hook.sh`. A session started in this repo gets them on any device; where `~/.claude/hooks/<name>` already exists (the phone) the launcher exits 0 so nothing fires twice. **Cloud sessions run the same gates with the same rules; nothing stands down** (operator, 2026-10-24). What differs: `hooks/lib/env.sh` resolves the vault and state paths for the cloud checkouts, a check that only the phone can satisfy is reported as a NOTE instead of blocking forever, and every hook runs under a watchdog that fails open and logs (`~/.claude/state/hooks.log`), so a hook can never hang or end a cloud session. Sources stay in `hooks/` — edit there, copy to `~/.claude/hooks/`. The operator's check-in verbs are `/ok`, `/defer`, `/reject` and `/write` (`hooks/README.md`).
-
 ## Subagents — standing order (operator, 2026-10-01; updated 2026-10-04)
 This is the explicit ask the Agent tool requires; don't wait to be told.
 - A request with independent parts → spawn subagents for them in parallel; do the
@@ -148,10 +137,6 @@ Testing-derived rules:
   active in the same repo directory at the same time** — running two
   simultaneously causes git-lock and file-write races.
 
-## Hook conventions
-- **Claude Code (phone):** sources in `hooks/` here (see `hooks/README.md`), live copies in `~/.claude/hooks/`, registered in `~/.claude/settings.json` by the operator.
-- Other engines (Codex, dsh, Hermes): no hooks wired yet; they follow the shared rules file.
-
 ## Git workflow — PR required, no direct pushes to main
 
 Push changes to a branch, open a PR, let the `CI` GitHub Action run, merge
@@ -172,10 +157,9 @@ this repo. A session started elsewhere (e.g. `~/downloads`) will not see it or
 `RESUME.md`/`PENDING.md` unless it's explicitly pointed here.
 
 ## What loads in this repo, for every agent (operator, 2026-11-10)
-- **Rules and hooks live here:** `plugins/aesops-enforcements/` (RULES.md, the gates, the gate CLI, tests), listed by
+- **Rules and hooks live here:** `plugins/aesops-enforcements/` (RULES.md, `lib/contract.py`, `hooks/hooks.json`, salary templates, tests), listed by
   this repo's marketplace `.claude-plugin/marketplace.json` (`aesop-xi`). Every repo's `.claude/settings.json` and the
   user settings enable `aesops-enforcements@aesop-xi`. One copy only.
 - **Claude Code:** `.claude/settings.json` also enables the NovAExopia plugins (`plugins/<name>/` there, marketplace
   `novaexopia`) and greedy-crane (marketplace `nvaex-vault`).
-- **Other agents:** DSH, AGY and Hermes need adapters that call the same hook scripts (not built).
-- The older `hooks/` folder here holds the previous hook set (live copies in `~/.claude/hooks/`); the plugin replaces it.
+- **Other agents:** Gemini CLI, AGY, DSH and Hermes need adapters that call `lib/hook.py <Event>` (not built).

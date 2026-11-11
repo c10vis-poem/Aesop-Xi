@@ -1,0 +1,20 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# Secret scan for every commit and push (gitleaks), then the repo's own hook of the same name.
+# Install: link pre-commit and pre-push to this file in the global git hooks folder (owner).
+name=$(basename "$0")
+case $name in
+  pre-commit)
+    gitleaks git --pre-commit --staged --redact --no-banner -v \
+      || { echo "BLOCKED: gitleaks found a secret in the staged changes." >&2; exit 1; } ;;
+  pre-push)
+    z=0000000000000000000000000000000000000000
+    while read -r lref lsha rref rsha; do
+      [ "$lsha" = "$z" ] && continue
+      if [ "$rsha" = "$z" ]; then range="$lsha --not --remotes"; else range="$rsha..$lsha"; fi
+      gitleaks git --log-opts="$range" --redact --no-banner -v \
+        || { echo "BLOCKED: gitleaks found a secret in the commits being pushed ($lref)." >&2; exit 1; }
+    done ;;
+esac
+own="$(git rev-parse --git-dir)/hooks/$name"
+[ -x "$own" ] && exec "$own" "$@"
+exit 0

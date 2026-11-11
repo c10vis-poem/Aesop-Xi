@@ -1,7 +1,7 @@
 {
   "name": "aesops-enforcements",
-  "version": "0.2.0",
-  "description": "The ten rules, all on, everywhere: every hook runs under one of them, one launcher, override and revoke named in every block, loop breaker, gate CLI, kill switches, cloud degrade.",
+  "version": "1.0.0",
+  "description": "Contract enforcement: no work without a signed contract. One gate, one stop gate, one ledger; STEP, SCOPE, REQUIRE and END lines; provable reads.",
   "author": {
     "name": "The Builder"
   },
