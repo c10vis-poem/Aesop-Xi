@@ -669,7 +669,10 @@ SETTINGS_RE = re.compile(r"(^|/)\.(claude|gemini)/settings(\.local)?\.json$")
 SECRET_FILE = re.compile(r"(^|/)(\.env(\..*)?|.*\.pem|.*\.key|id_rsa.*|id_ed25519.*|credentials.*|secrets?(\.enc)?\.ya?ml)$")
 SECRET_BASH = re.compile(r"\b(cat|less|more|head|tail|bat|strings|xxd|od|base64)\b[^\n]*"
                          r"(\.env\b|\.pem\b|\.key\b|id_rsa|id_ed25519|credentials|secrets?(\.enc)?\.ya?ml)"
-                         r"|\bsops\s+(-d|--decrypt)\b|\bprintenv\b|--no-verify\b|hooksPath")
+                         r"|\bsops\s+(-d|--decrypt)\b|\bprintenv\b"
+                         # skipping or rerouting git hooks: only inside a git command, so text that merely mentions
+                         # the flag (echo, notes) is not blocked. `git commit -n` is the short form of --no-verify.
+                         r"|\bgit\b[^\n]*(--no-verify\b|hooksPath|\bcommit\b[^\n]*\s-[a-zA-Z]?n[a-zA-Z]?(?=\s|$))")
 
 
 CONTRACT_DIR = re.compile(r"(^|/)\.contract(/|$)")
@@ -1275,7 +1278,31 @@ def _sub_gate(sid, st, inp, tool, ti, agent):
                          "Blocked) before any work.")
         if last_work and mt < last_work:
             return _deny(sid, st, tool, ti, agent, f"Update '## Last action' in {p} before the next call.")
+    if tool == "SubagentHandback":
+        # The sub-agent's report back to the main session: allowed once its sub-contract is met, so it works as the
+        # sub-agent's own stop check. Refused with the unmet lines named, never with a bare "outside contract".
+        miss = _sub_missing(sid, st, c, label, sp, agent)
+        if miss:
+            return _deny(sid, st, tool, ti, agent, f"Sub-contract {label} is not done, so the report cannot be "
+                         "handed back yet:\n- " + "\n- ".join(miss[:12]))
+        _allow(sid, st, tool, ti, agent, label=label, work=False)
+        return None
     return _contract_gate(sid, st, c, inp, tool, ti, label, sp["t"], agent)
+
+
+def _sub_missing(sid, st, c, label, sp, agent):
+    """Every unmet line of a sub-contract: its tasks, its goals and its progress file."""
+    miss = []
+    for t in c["tasks"]:
+        miss += task_open(sid, st, t, label, sp["t"], agent)
+    miss += goals_missing(sid, st, c, sp["t"])
+    for t in c["tasks"] + [c["global"]]:
+        for r in t["require"]:
+            if r["kind"] == "Write-to-task":
+                ok, why = progress_ok(norm(r["value"], st["root"]))
+                if not ok:
+                    miss.append(why)
+    return sorted(set(miss))
 
 
 def _allow(sid, st, tool, ti, agent, work=True, inp=None, **kw):
@@ -1583,16 +1610,7 @@ def on_subagent_stop(inp):
     label = st["agents"][agent]
     sp = next(s for s in st["spawns"] if s["label"] == label)
     c = load_contract(sid, st, label)
-    miss = []
-    for t in c["tasks"]:
-        miss += task_open(sid, st, t, label, sp["t"], agent)
-    miss += [m for m in goals_missing(sid, st, c, sp["t"])]
-    for t in c["tasks"] + [c["global"]]:
-        for r in t["require"]:
-            if r["kind"] == "Write-to-task":
-                ok, why = progress_ok(norm(r["value"], st["root"]))
-                if not ok:
-                    miss.append(why)
+    miss = _sub_missing(sid, st, c, label, sp, agent)
     if not miss:
         log(sid, kind="closed", label=label, finished=True, agent=agent)
         return None
