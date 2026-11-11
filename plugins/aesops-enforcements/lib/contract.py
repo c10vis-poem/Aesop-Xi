@@ -4,6 +4,7 @@ A requirement exists only if it is written in a contract the owner signed with #
 (or in a salary template). Every check is a match, a count or a file on disk.
 """
 import fnmatch
+import glob
 import hashlib
 import json
 import os
@@ -26,7 +27,13 @@ PATH_TOOLS = {"Read": "file_path", "Write": "file_path", "Edit": "file_path",
               "NotebookEdit": "notebook_path", "Glob": "path", "Grep": "path"}
 WRITE_TOOLS = {"Write", "Edit", "NotebookEdit"}
 SHELL_OPS = re.compile(r";|&&|\|\||\||`|\$\(|>|<|\n")
-BREACH_LIMIT = 3
+# Phases where no contract is active: the owner and the agent negotiate the work order.
+NEGOTIATION = {"NEGOTIATION", "OPENING", "IDLE"}
+# Gates the owner can lift (#override) or silence (#mute). Protection is never one of them.
+GATES = {"scope", "stop", "claims", "quiz", "opening"}
+QUIZ_MIN, QUIZ_MAX = 3, 8
+RECON_UNSAFE = re.compile(r"\s-(delete|exec|execdir|ok|okdir|fprint|fprintf|fls)\b")
+RNG = random.SystemRandom()
 
 
 # ---------------------------------------------------------------- paths and state
@@ -47,6 +54,20 @@ def norm(p, root=None):
 
 def under(path, d):
     return path == d or path.startswith(d.rstrip("/") + "/")
+
+
+def resolve(val, root):
+    """A REQUIRE path; `newest <glob>` picks the most recently changed match (e.g. the newest handoff)."""
+    v = val.strip()
+    if v.startswith("newest "):
+        pat = norm(v[len("newest "):], root)
+        hits = [p for p in glob.glob(pat) if os.path.isfile(p)]
+        return max(hits, key=os.path.getmtime) if hits else pat
+    return norm(v, root)
+
+
+def line_hash(s):
+    return hashlib.sha256(s.rstrip("\r").encode()).hexdigest()[:16]
 
 
 def now():
@@ -111,10 +132,11 @@ def git_root(cwd):
 
 
 def new_state(sid, cwd):
-    return {"phase": "OPENING", "current": "OPENING", "root": git_root(cwd), "letters": {},
+    return {"phase": "NEGOTIATION", "current": "OPENING", "root": git_root(cwd), "letters": {},
             "redo": None, "push_ok": False, "breaches": 0, "signed_at": now(),
             "compact_at": 0, "hash": None, "limit_hit": False, "spawns": [], "agents": {},
-            "quote": None, "quote_passed": [], "last_block": None, "forks": {}}
+            "quote": None, "quote_passed": [], "last_block": None, "forks": {},
+            "overrides": [], "turn_start": now(), "frozen_from": None}
 
 
 def ensure(sid, cwd):
@@ -357,17 +379,64 @@ def owner_copy(sid, label, src):
 VERBS = [("go", r"#go\b"), ("ok", r"#ok\b"), ("redo", r"#redo\b"),
          ("push", r"#push\b")]
 NEG = re.compile(r"\b(don'?t|do not|never|not|no)\b")
+SCOPES = ("turn", "task", "session")
+
+
+def _owner_text(prompt):
+    return re.sub(r"<pasted_content[^>]*>.*?</pasted_content>", " ", prompt or "", flags=re.S | re.I)
 
 
 def parse_verbs(prompt):
-    text = re.sub(r"<pasted_content[^>]*>.*?</pasted_content>", " ", prompt or "", flags=re.S | re.I)
     found = []
-    for sentence in re.split(r"[.!?;\n]+", text.lower()):
+    for sentence in re.split(r"[.!?;\n]+", _owner_text(prompt).lower()):
         for verb, pat in VERBS:
             m = re.search(pat, sentence)
             if m and not NEG.search(sentence[:m.start()]) and verb not in found:
                 found.append(verb)
     return found
+
+
+def parse_overrides(prompt):
+    """Owner-only: `#override [turn|task|session]`, `#mute <gate> [turn|task|session]`, `#unmute <gate|all>`.
+    Returns a list of (action, gate, scope). Default scope: turn. Protection is never a gate."""
+    out = []
+    for sentence in re.split(r"[.!?;\n]+", _owner_text(prompt).lower()):
+        for m in re.finditer(r"#(override|mute|unmute)\b((?:\s+[\w-]+){0,2})", sentence):
+            if NEG.search(sentence[:m.start()]):
+                continue
+            words = m.group(2).split()
+            act = m.group(1)
+            if act == "override":
+                scope = words[0] if words and words[0] in SCOPES else "turn"
+                out.append(("override", "all", scope))
+            elif act == "mute" and words and words[0] in GATES:
+                scope = words[1] if len(words) > 1 and words[1] in SCOPES else "turn"
+                out.append(("mute", words[0], scope))
+            elif act == "unmute" and words and (words[0] in GATES or words[0] == "all"):
+                out.append(("unmute", words[0], None))
+    return out
+
+
+def lifted(st, gate, task_n=None):
+    """True when the owner lifted this gate (override = every gate) and the lift has not expired."""
+    for o in st.get("overrides", []):
+        if o["gate"] not in ("all", gate):
+            continue
+        if o["scope"] == "task" and task_n is not None and o.get("task") not in (None, task_n):
+            continue
+        return True
+    return False
+
+
+def _expire_overrides(st, task_n=None):
+    keep = []
+    for o in st.get("overrides", []):
+        if o["scope"] == "turn":
+            continue  # a turn ends at the next owner prompt
+        if o["scope"] == "task" and task_n is not None and o.get("task") is not None and o["task"] != task_n:
+            continue
+        keep.append(o)
+    st["overrides"] = keep
 
 
 def next_letter(st):
@@ -383,22 +452,37 @@ def on_prompt(inp):
     st = ensure(sid, inp.get("cwd"))
     verbs = parse_verbs(inp.get("prompt", ""))
     bad = fp_changed(sid)
-    if bad:
-        st["phase"] = "FROZEN"
-        log(sid, kind="tamper", files=bad)
     notes = []
+    if bad:
+        _freeze(sid, st, bad)
+    elif st["phase"] == "FROZEN" and st.get("frozen_from"):
+        st["phase"], st["frozen_from"] = st["frozen_from"], None  # the owner re-fingerprinted: carry on
+        notes.append("Protected files re-fingerprinted by the owner; the session continues.")
+    st["turn_start"] = now()
+    task_n = _task_number(sid, st)
+    _expire_overrides(st, task_n)
+    for act, gate, scope in parse_overrides(inp.get("prompt", "")):
+        log(sid, kind="override", action=act, gate=gate, scope=scope)
+        if act == "unmute":
+            st["overrides"] = [o for o in st["overrides"] if gate != "all" and o["gate"] != gate]
+            notes.append(f"Owner: {gate} gate back on.")
+        else:
+            st["overrides"].append({"gate": gate, "scope": scope, "task": task_n if scope == "task" else None,
+                                    "t": now()})
+            notes.append(f"Owner: {'every working gate' if gate == 'all' else gate + ' gate'} lifted for this "
+                         f"{scope}. Protection stays on.")
     letter = st["current"].rstrip("0123456789") if st["current"] != "OPENING" else None
     for v in verbs:
         log(sid, kind="verb", verb=v)
     if "ok" in verbs and letter and st["phase"] in ("ACTIVE", "DONE", "FROZEN"):
         st["letters"][letter]["status"] = "accepted"
-        st["phase"] = "IDLE"
+        st["phase"] = "NEGOTIATION"
         runs = st["letters"][letter]["runs"]
         _score(st, letter, f"accepted at {st['current']} after {runs} run(s)")
         notes.append(f"Contract {st['current']} accepted by the owner. Next signed contract gets a new letter.")
     if "redo" in verbs and letter and st["phase"] in ("ACTIVE", "DONE", "FROZEN"):
         st["redo"] = letter
-        st["phase"] = "IDLE"
+        st["phase"] = "NEGOTIATION"
         notes.append(f"Contract {st['current']} sent back by the owner (#redo). Write the revised work order to "
                      f"{proposal_path(sid)}; when signed it becomes the next numbered run of {letter}.")
     if "go" in verbs:
@@ -480,8 +564,29 @@ def summary(c):
 
 
 def status_line(sid, st):
-    return (f"Contract state: phase {st['phase']}, contract {st['current']}, breaches {st['breaches']}/{BREACH_LIMIT}, "
-            f"push {'approved' if st['push_ok'] else 'held'}. Work order file: {proposal_path(sid)}; notes: {notes_path(sid)}.")
+    """One short line for the agent. The full picture (unmet lines, breaches, overrides) is in the status bar."""
+    if st["phase"] in NEGOTIATION:
+        return (f"Contract state: {st['phase']} (no signed contract). Work order: {proposal_path(sid)}; "
+                f"notes: {notes_path(sid)}.")
+    n = _task_number(sid, st)
+    return (f"Contract state: {st['phase']}, contract {st['current']}" + (f", task {n}" if n else "")
+            + f", push {'approved' if st['push_ok'] else 'held'}.")
+
+
+def _task_number(sid, st):
+    if st["phase"] in NEGOTIATION:
+        return None
+    c = load_contract(sid, st)
+    if not c:
+        return None
+    return current_task(sid, st, c, st["current"], st["signed_at"])[0] + 1
+
+
+def _freeze(sid, st, bad):
+    if st["phase"] != "FROZEN":
+        st["frozen_from"] = st["phase"]
+    st["phase"] = "FROZEN"
+    log(sid, kind="tamper", files=bad)
 
 
 # ---------------------------------------------------------------- session start
@@ -503,11 +608,13 @@ def on_start(inp):
     if not os.path.exists(os.path.join(sdir(sid), "fingerprint.json")):
         fp_save(sid)
     c = load_contract(sid, st, "OPENING")
-    req = [f"{r['kind']}: {norm(r['value'], st['root'])}" + (" (if it exists)" if r.get("optional") else "")
-           for t in c["tasks"] for r in t["require"]]
-    msg = ("The session is in OPENING. Allowed until the owner signs a contract with #go: the Read tool, the skills "
-           "the opening names, and writing notes and the work order. Opening requirements: "
-           + ("; ".join(req) or "none") + ". " + status_line(sid, st))
+    req = [f"{r['kind']}: {resolve(r['value'], st['root'])}" + (" (if it exists)" if r.get("optional") else "")
+           for t in c["tasks"] + [c["global"]] for r in t["require"]]
+    allowed = [f"{s['kind']}: {s['value']}" for t in c["tasks"] + [c["global"]] for s in t["scope"] + t["step"]]
+    msg = ("The session is in NEGOTIATION (contract negotiation). Allowed until the owner signs a work order with "
+           "#go: the Read tool, the skills the opening names, writing notes and the work order"
+           + (", and " + ", ".join(allowed) if allowed else "") + ". Opening reads: "
+           + ("; ".join(req) or "none") + ". Documents these point to may be read too. " + status_line(sid, st))
     return {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": msg}}
 
 
@@ -526,14 +633,35 @@ SECRET_BASH = re.compile(r"\b(cat|less|more|head|tail|bat|strings|xxd|od|base64)
                          r"|\bsops\s+(-d|--decrypt)\b|\bprintenv\b|--no-verify\b|hooksPath")
 
 
+CONTRACT_DIR = re.compile(r"(^|/)\.contract(/|$)")
+PATHISH = re.compile(r"""[^\s'"=:,()\[\]{}]*/[^\s'"=:,()\[\]{}]*""")
+
+
+def _cmd_paths(cmd):
+    """Every path-like token of a command, with ~, $HOME and ${HOME} expanded and .. and symlinks resolved."""
+    text = cmd.replace("${HOME}", HOME).replace("$HOME", HOME)
+    out = []
+    for tok in PATHISH.findall(text):
+        tok = tok.strip("'\"")
+        if tok.startswith("~"):
+            tok = os.path.expanduser(tok)
+        if tok.startswith("/"):
+            out.append(os.path.realpath(tok))
+    return out
+
+
+def _protected_hit(sid, path):
+    return SETTINGS_RE.search(path) or CONTRACT_DIR.search(path) or any(under(path, d) for d in protected_paths(sid))
+
+
 def protection(sid, tool, ti):
     allowed_writes = {proposal_path(sid), notes_path(sid)}
     if tool in WRITE_TOOLS:
         p = norm(ti.get(PATH_TOOLS[tool], ""))
         if p in allowed_writes:
             return None
-        if SETTINGS_RE.search(p) or any(under(p, d) for d in protected_paths(sid)):
-            return f"Protected path: {p} is enforcement state, settings or the enforcement plugin. Only the owner changes it."
+        if _protected_hit(sid, p):
+            return f"Protected path: {p} is enforcement state, settings, an opening file or the enforcement plugin. Only the owner changes it."
     if tool == "Read":
         p = norm(ti.get("file_path", ""))
         if SECRET_FILE.search(p):
@@ -545,6 +673,9 @@ def protection(sid, tool, ti):
         for d in protected_paths(sid):
             if d in cmd or d.replace(HOME, "~") in cmd:
                 return f"Protected: the command touches {d.replace(HOME, '~')}. Use the Read tool to look; only the owner changes it."
+        for p in _cmd_paths(cmd):
+            if _protected_hit(sid, p):
+                return f"Protected: the command touches {p.replace(HOME, '~')}. Use the Read tool to look; only the owner changes it."
         if SETTINGS_RE.search(cmd) or re.search(r"\.(claude|gemini)/settings", cmd):
             return "Protected: the command touches a settings file. Only the owner changes settings."
     return None
@@ -568,23 +699,47 @@ def primary(tool, ti):
     return json.dumps(ti, sort_keys=True)
 
 
-def server_of(tool, inp):
+def server_names(tool, inp):
+    """Every name a contract may use for an MCP server: the tool-name segment (`plugin_x_y`, `claude_ai_Supabase`),
+    the hook input's `mcp_server.name`, and its `plugin:x:y` form folded to `plugin_x_y`."""
+    names = set()
+    if tool.startswith("mcp__"):
+        names.add(tool.split("__")[1])
     s = (inp.get("mcp_server") or {}).get("name")
     if s:
-        return s
+        names.add(s)
+        names.add(s.replace(":", "_"))
+        names.add(s.split(":")[-1])
+    return names
+
+
+def server_of(tool, inp):
     if tool.startswith("mcp__"):
         return tool.split("__")[1]
-    return None
+    return (inp.get("mcp_server") or {}).get("name")
 
 
 def tool_listed(tool, inp, names):
-    srv = server_of(tool, inp)
+    srvs = server_names(tool, inp)
     for n in names:
         if n == tool or fnmatch.fnmatch(tool, n):
             return True
-        if srv and (n == srv or n == "server:" + srv or n.rstrip(":") == srv):
+        bare = n[len("server:"):] if n.startswith("server:") else n.rstrip(":")
+        if bare in srvs:
             return True
     return False
+
+
+GIT_GLOBAL = re.compile(r"^(git)((?:\s+(?:-C\s+\S+|-c\s+\S+|--git-dir=\S+|--work-tree=\S+|--no-pager))+)(\s|$)")
+GH_REPO = re.compile(r"\s(?:-R|--repo)(?:\s+|=)\S+")
+
+
+def canonical_bash(cmd):
+    """`git -C x push` -> `git push`; `gh -R o/r pr merge` -> `gh pr merge`: so salary holds see the real verb."""
+    c = GIT_GLOBAL.sub(r"\1\3", cmd.strip(), count=1)
+    if c.startswith("gh "):
+        c = GH_REPO.sub("", c)
+    return c
 
 
 def after_met(sid, st, item, root):
@@ -625,9 +780,9 @@ def _is_fork(st, root):
 
 def line_matches(tool, inp, item, root, exact):
     kind, val = item["kind"], item["value"]
-    srv = server_of(tool, inp)
     if kind == "Server":
-        return srv is not None and (val == srv or val == "*")
+        srvs = server_names(tool, inp)
+        return bool(srvs) and (val == "*" or val in srvs)
     if kind != tool and not fnmatch.fnmatch(tool, kind):
         return False
     if val == "*":
@@ -655,20 +810,31 @@ def used_steps(sid, label):
 # ---------------------------------------------------------------- requirement checks
 
 def coverage(sid, st, path, since, agent=None):
-    """Lines of `path` proven read since `since`, against the file's current hash."""
+    """Lines of `path` proven read since `since`. A line counts when its current text was returned by a Read
+    (line hash), so an edit voids only the lines it changed. `agent` None = the main session's own reads only."""
     try:
         cur = sha(path)
         with open(path, encoding="utf-8", errors="replace") as f:
-            total = len(f.read().split("\n"))
+            lines = f.read().split("\n")
     except OSError:
         return set(), 0, None
+    total = len(lines)
     since = max(since, st.get("compact_at", 0), st.get("void", {}).get(path, 0))  # a failed round voids its reads
-    got = set()
+    got, seen = set(), set()
     for e in ledger(sid):
-        if e.get("kind") == "read" and e.get("path") == path and e.get("sha") == cur and e["t"] >= since \
-                and (agent is None or e.get("agent") == agent):
+        if e.get("kind") != "read" or e.get("path") != path or e["t"] < since or e.get("agent") != agent:
+            continue
+        if e.get("binary"):
+            if e.get("sha") == cur:
+                got.update(range(1, total + 1))
+            continue
+        if "hashes" in e:
+            seen.update(e["hashes"])
+        elif e.get("sha") == cur:
             for a, b in e.get("ranges", []):
                 got.update(range(a, b + 1))
+    if seen:
+        got.update(i for i, x in enumerate(lines, 1) if line_hash(x) in seen)
     return got, total, cur
 
 
@@ -691,9 +857,9 @@ def _real_line_count(path):
 def require_met(sid, st, r, since, agent=None):
     kind, root = r["kind"], st["root"]
     val = r["value"]
-    calls = [e for e in ledger(sid) if e["t"] >= since and (agent is None or e.get("agent") == agent)]
+    calls = [e for e in ledger(sid) if e["t"] >= since and e.get("agent") == agent]
     if kind in ("Read FULL", "Read FULL+QUOTE", "Read"):
-        p = norm(val, root)
+        p = resolve(val, root)
         if r.get("optional") and not os.path.exists(p):
             return True
         if kind == "Read":
@@ -709,7 +875,8 @@ def require_met(sid, st, r, since, agent=None):
     if kind == "Tool":
         return any(e.get("kind") == "call" and e.get("tool") == val for e in calls)
     if kind == "Server":
-        return any(e.get("kind") == "call" and e.get("server") == val for e in calls)
+        return any(e.get("kind") == "call" and (e.get("server") == val or val in (e.get("servers") or []))
+                   for e in calls)
     if kind == "File":
         return os.path.exists(norm(val, root))
     if kind == "Check":
@@ -841,16 +1008,19 @@ def on_pretool(inp):
     agent = inp.get("agent_id")
     bad = fp_changed(sid)
     if bad:
-        st["phase"] = "FROZEN"
-        log(sid, kind="tamper", files=bad)
+        _freeze(sid, st, bad)
+        save_state(sid, st)
         if tool == "Read":
-            save_state(sid, st)
             return None
         return _deny(sid, st, tool, ti, agent, "Protected files changed: " + ", ".join(bad[:5])
-                     + ". Session frozen; only the owner re-fingerprints it.", count=False)
+                     + ". Session paused until the owner re-fingerprints it.", count=False)
     r = protection(sid, tool, ti)
     if r:
         return _deny(sid, st, tool, ti, agent, r, count=st["phase"] == "ACTIVE")
+    _quiz_taint(sid, st, tool, ti)
+    if tool == "Read":
+        if norm(ti.get("file_path", "")) in (proposal_path(sid), notes_path(sid)):
+            return None
     if st["phase"] == "DONE":
         if tool == "Read":
             return None
@@ -860,15 +1030,21 @@ def on_pretool(inp):
         return None
     if tool in WRITE_TOOLS and norm(ti.get(PATH_TOOLS[tool], "")) in (proposal_path(sid), notes_path(sid)):
         return None
-    # salary templates (pre-signed, always in force)
+    # salary templates (pre-signed, always in force). Bash is matched as written and in canonical form, so
+    # `git -C x push` meets the same #push hold as `git push`.
     for name, sc in salary_contracts(st["root"]):
         for t in sc["tasks"] + [sc["global"]]:
             for item in t["scope"] + t["step"]:
-                if line_matches(tool, inp, item, st["root"], exact=item in t["step"]):
+                exact = item in t["step"]
+                hit = line_matches(tool, inp, item, st["root"], exact=exact)
+                if not hit and tool == "Bash":
+                    canon = dict(inp, tool_input=dict(ti, command=canonical_bash(ti.get("command", ""))))
+                    hit = line_matches(tool, canon, item, st["root"], exact=exact)
+                if hit:
                     ok, need = after_met(sid, st, item, st["root"])
                     save_state(sid, st)
                     if ok:
-                        _allow(sid, st, tool, ti, agent, label="salary:" + name)
+                        _allow(sid, st, tool, ti, agent, inp=inp, label="salary:" + name)
                         return None
                     return _deny(sid, st, tool, ti, agent,
                                  f"Salary protocol {name}: '{item['kind']}: {item['value']}' is held until {need}.",
@@ -876,20 +1052,30 @@ def on_pretool(inp):
     if agent and agent in st["agents"]:
         return _sub_gate(sid, st, inp, tool, ti, agent)
     phase = st["phase"]
-    if phase in ("OPENING", "IDLE"):
+    if phase in NEGOTIATION:
         c = load_contract(sid, st, "OPENING")
         skills = [s for t in c["tasks"] + [c["global"]] for s in t["skills"]]
         if tool == "Read" or (tool == "Skill" and tool_skill(ti) in [s.split(":")[-1] for s in skills]):
             return None
+        # Project Recon: the opening's own SCOPE and STEP lines (read-only listing by default)
+        for t in c["tasks"] + [c["global"]]:
+            for item in t["scope"] + t["step"]:
+                if line_matches(tool, inp, item, st["root"], exact=item in t["step"]) \
+                        and not (tool == "Bash" and RECON_UNSAFE.search(ti.get("command", ""))):
+                    _allow(sid, st, tool, ti, agent, inp=inp, label="OPENING")
+                    return None
+        if lifted(st, "scope"):
+            _allow(sid, st, tool, ti, agent, inp=inp, label="OPENING", override=True)
+            return None
         return _deny(sid, st, tool, ti, agent,
-                     f"No signed contract (phase {phase}). Only reads, the opening's skills and the work order "
-                     f"({proposal_path(sid)}) are allowed. Write the work order; the owner signs it with #go.",
+                     f"No signed contract ({phase}). Allowed: reads, the opening's skills and listing lines, and "
+                     f"the work order ({proposal_path(sid)}). Write the work order; the owner signs it with #go.",
                      count=False)
     if phase == "FROZEN" and tool == "Read":
         return None
     if phase == "FROZEN":
-        return _deny(sid, st, tool, ti, agent, f"Contract {st['current']} is frozen after {BREACH_LIMIT} breaches. "
-                     "Only the owner's #ok or #redo opens it.", count=False)
+        return _deny(sid, st, tool, ti, agent, f"Contract {st['current']} is paused: protected files changed. "
+                     "The owner re-fingerprints the session to continue.", count=False)
     c = load_contract(sid, st)
     if c is None:
         return _deny(sid, st, tool, ti, agent, "The signed contract file is missing.", count=False)
@@ -906,62 +1092,66 @@ def tool_skill(ti):
     return (ti.get("skill") or "").split(":")[-1]
 
 
+def _union(c):
+    """Every task's lines plus the global ones: a call that fits any task is allowed at any time. Order is kept
+    for sign-off only: the first task with an unmet line stays the current task until that line is met."""
+    u = _task(0, "union")
+    for t in [c["global"]] + c["tasks"]:
+        for k in ("tools", "skills", "agents", "step", "scope"):
+            u[k] = u[k] + t[k]
+    return u
+
+
 def _contract_gate(sid, st, c, inp, tool, ti, label, since, agent):
     root = st["root"]
-    i, task = current_task(sid, st, c, label, since, agent)
+    i, _task_now = current_task(sid, st, c, label, since, agent)
+    u = _union(c)
     g = c["global"]
-    tools = task["tools"] + g["tools"]
-    later = [t for t in c["tasks"][i + 1:]
-             if any(line_matches(tool, inp, s, root, exact=s in t["step"]) for s in t["step"] + t["scope"])
-             or (tool == "Skill" and tool_skill(ti) in [x.split(":")[-1] for x in t["skills"]])
-             or (tool in ("Agent", "Task") and any(a["type"] == ti.get("subagent_type") for a in t["agents"]))]
-    if later and not (tools and tool_listed(tool, inp, tools) and _in_task(sid, st, task, g, inp, tool, ti, root, label)):
-        miss = task_open(sid, st, task, label, since, agent)
-        return _deny(sid, st, tool, ti, agent, f"That call belongs to task {later[0]['n']}; task {i + 1} is still open: "
-                     + "; ".join(miss))
+    tools = u["tools"]
     if tools and not tool_listed(tool, inp, tools):
-        return _deny(sid, st, tool, ti, agent, f"Contract {label} task {i + 1}: {tool} is not in TOOLS "
-                     f"({', '.join(tools)}).")
+        return _gate_deny(sid, st, tool, ti, agent, inp, label, i,
+                          f"Contract {label}: {tool} is not in TOOLS ({', '.join(tools)}).")
     if tool == "Skill":
-        skills = [s.split(":")[-1] for s in task["skills"] + g["skills"]]
+        skills = [s.split(":")[-1] for s in u["skills"]]
         if tool_skill(ti) not in skills:
-            return _deny(sid, st, tool, ti, agent, f"Contract {label} task {i + 1}: skill {tool_skill(ti)} is not "
-                         f"in SKILLS ({', '.join(skills) or 'none'}).")
-        _allow(sid, st, tool, ti, agent, label=label, task=i + 1)
+            return _gate_deny(sid, st, tool, ti, agent, inp, label, i,
+                              f"Contract {label}: skill {tool_skill(ti)} is not in SKILLS ({', '.join(skills) or 'none'}).")
+        _allow(sid, st, tool, ti, agent, inp=inp, label=label, task=i + 1)
         return None
     if tool in ("Agent", "Task"):
-        return _spawn(sid, st, c, task, g, inp, tool, ti, label, i, agent)
+        return _spawn(sid, st, c, u, g, inp, tool, ti, label, i, agent)
     used = used_steps(sid, label)
-    for s in task["step"] + g["step"]:
+    for s in u["step"]:
         if s["id"] not in used and line_matches(tool, inp, s, root, exact=True):
             ok, need = after_met(sid, st, s, root)
             if not ok:
                 return _deny(sid, st, tool, ti, agent, f"STEP held until {need}.")
-            _allow(sid, st, tool, ti, agent, label=label, task=i + 1, step=s["id"])
+            _allow(sid, st, tool, ti, agent, inp=inp, label=label, task=i + 1, step=s["id"])
             return None
-    for s in task["scope"] + g["scope"]:
+    for s in u["scope"]:
         if line_matches(tool, inp, s, root, exact=False):
             ok, need = after_met(sid, st, s, root)
             if not ok:
                 return _deny(sid, st, tool, ti, agent, f"SCOPE held until {need}.")
-            _allow(sid, st, tool, ti, agent, label=label, task=i + 1)
+            _allow(sid, st, tool, ti, agent, inp=inp, label=label, task=i + 1)
             return None
-    if tools and tool_listed(tool, inp, tools) and not task["step"] and not task["scope"] and not g["scope"]:
-        _allow(sid, st, tool, ti, agent, label=label, task=i + 1)
+    if tools and tool_listed(tool, inp, tools) and not u["step"] and not u["scope"]:
+        _allow(sid, st, tool, ti, agent, inp=inp, label=label, task=i + 1)
         return None
     key = primary(tool, ti)
     if tool == "Bash" and SHELL_OPS.search(key):
-        why = " (chained or redirected commands only run as an exact STEP)"
+        why = " (the command holds | ; & < > ` or $( somewhere, even in quotes: write it as a script, or as an exact STEP)"
     else:
         why = ""
-    return _deny(sid, st, tool, ti, agent, f"Outside contract {label} task {i + 1}: {tool} {key[:160]}{why}.")
+    return _gate_deny(sid, st, tool, ti, agent, inp, label, i, f"Outside contract {label}: {tool} {key[:160]}{why}.")
 
 
-def _in_task(sid, st, task, g, inp, tool, ti, root, label):
-    """True when the call fits a STEP or SCOPE of the open task (or the global lines)."""
-    used = used_steps(sid, label)
-    return any(s["id"] not in used and line_matches(tool, inp, s, root, exact=True) for s in task["step"] + g["step"]) \
-        or any(line_matches(tool, inp, s, root, exact=False) for s in task["scope"] + g["scope"])
+def _gate_deny(sid, st, tool, ti, agent, inp, label, i, reason):
+    """A scope refusal, unless the owner lifted the scope gate (#override / #mute scope)."""
+    if lifted(st, "scope", i + 1):
+        _allow(sid, st, tool, ti, agent, inp=inp, label=label, task=i + 1, override=True)
+        return None
+    return _deny(sid, st, tool, ti, agent, reason)
 
 
 def _spawn(sid, st, c, task, g, inp, tool, ti, label, i, agent):
@@ -1055,23 +1245,38 @@ def _sub_gate(sid, st, inp, tool, ti, agent):
     return _contract_gate(sid, st, c, inp, tool, ti, label, sp["t"], agent)
 
 
-def _allow(sid, st, tool, ti, agent, work=True, **kw):
-    srv = server_of(tool, {"tool_input": ti}) if tool.startswith("mcp__") else None
-    log(sid, kind="call", tool=tool, key=primary(tool, ti)[:400], agent=agent, server=srv, work=work, **kw)
+def _allow(sid, st, tool, ti, agent, work=True, inp=None, **kw):
+    srv = server_of(tool, inp or {"tool_input": ti}) if tool.startswith("mcp__") else None
+    srvs = sorted(server_names(tool, inp or {})) if tool.startswith("mcp__") else None
+    log(sid, kind="call", tool=tool, key=primary(tool, ti)[:400], agent=agent, server=srv, servers=srvs,
+        work=work, **kw)
     save_state(sid, st)
 
 
 def _deny(sid, st, tool, ti, agent, reason, count=True):
-    log(sid, kind="deny", tool=tool, key=primary(tool, ti)[:400], agent=agent, reason=reason)
+    """Refuse the call. Under a contract it is recorded as a breach (counted, shown in the status bar); breaches
+    no longer freeze anything: an unmet contract simply does not close."""
+    log(sid, kind="deny", tool=tool, key=primary(tool, ti)[:400], agent=agent, reason=reason, breach=bool(
+        count and st["phase"] == "ACTIVE"))
     if count and st["phase"] == "ACTIVE":
         st["breaches"] += 1
-        if st["breaches"] >= BREACH_LIMIT:
-            st["phase"] = "FROZEN"
-            reason += f" Breach {st['breaches']}/{BREACH_LIMIT}: contract {st['current']} is now frozen until the owner's #ok or #redo."
-        else:
-            reason += f" Breach {st['breaches']}/{BREACH_LIMIT}."
+        reason += f" Breach {st['breaches']} (recorded)."
     save_state(sid, st)
     return deny(reason)
+
+
+def _quiz_taint(sid, st, tool, ti):
+    """A Read, Grep or Bash call that touches the file of a pending quiz fails that quiz."""
+    q = st.get("quote")
+    if not q or q.get("tainted"):
+        return
+    p = q["path"]
+    hit = (tool in PATH_TOOLS and norm(ti.get(PATH_TOOLS[tool], "")) == p) or \
+        (tool == "Bash" and (p in ti.get("command", "") or os.path.basename(p) in ti.get("command", "")))
+    if hit:
+        q["tainted"] = True
+        log(sid, kind="quiz-taint", tool=tool, path=p)
+        save_state(sid, st)
 
 
 # ---------------------------------------------------------------- ledger (PostToolUse)
@@ -1097,13 +1302,17 @@ def on_posttool(inp):
 
 def read_proof(ti, tr):
     """Line-hash proof: only lines whose returned text equals the file's text on disk count as read."""
-    if not isinstance(tr, dict) or not isinstance(tr.get("file"), dict):
+    if not isinstance(tr, dict):
         return None
-    f = tr["file"]
+    f = tr.get("file") if isinstance(tr.get("file"), dict) else {}
     path = norm(f.get("filePath") or ti.get("file_path", ""))
     content = f.get("content")
     if not isinstance(content, str):
-        return None
+        # images, PDFs, notebooks: the Read returned the whole file in another form; record it by file hash
+        try:
+            return {"path": path, "sha": sha(path), "binary": True, "type": tr.get("type")} if path else None
+        except OSError:
+            return None
     start = int(f.get("startLine") or 1)
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
@@ -1114,10 +1323,13 @@ def read_proof(ti, tr):
     got = content.split("\n")
     if content.endswith("\n"):
         got = got[:-1]
-    ranges, a = [], None
+    ranges, hashes, a = [], [], None
     for k, line in enumerate(got):
         n = start + k
-        ok = n - 1 < len(disk) and hashlib.sha256(line.rstrip("\r").encode()).digest() == hashlib.sha256(disk[n - 1].rstrip("\r").encode()).digest()
+        d = disk[n - 1] if n - 1 < len(disk) else None
+        ok = d is not None and (line.rstrip("\r") == d.rstrip("\r") or _truncated_match(line, d))
+        if ok:
+            hashes.append(line_hash(d))
         if ok and a is None:
             a = n
         if not ok and a is not None:
@@ -1125,8 +1337,20 @@ def read_proof(ti, tr):
             a = None
     if a is not None:
         ranges.append([a, start + len(got) - 1])
-    return {"path": path, "sha": cur, "ranges": ranges, "total": f.get("totalLines"),
+    return {"path": path, "sha": cur, "ranges": ranges, "hashes": hashes, "total": f.get("totalLines"),
             "returned": len(got), "chars": len(content)}
+
+
+def _truncated_match(returned, disk_line):
+    """The Read tool cuts very long lines; the returned start of the line still proves it was read."""
+    r = returned.rstrip("\r")
+    if len(disk_line) <= len(r) or len(r) < 1000:
+        return False
+    for cut in ("... [truncated]", "…", "..."):
+        if r.endswith(cut):
+            r = r[: -len(cut)]
+            break
+    return disk_line.startswith(r[:1000]) and disk_line.startswith(r)
 
 
 # ---------------------------------------------------------------- the stop gate
@@ -1135,21 +1359,43 @@ CITE = re.compile(r"`?((?:~|/|\.{1,2}/|[\w.-]+/)[\w./~-]*\.\w+):(\d+)(?:[-–](\
 READ_CLAIM = re.compile(r"\b(?:i\s+)?(?:read|re-read|reread|went through|opened)\b[^.\n]{0,80}?`([^`]+\.\w+)`", re.I)
 
 
+NOT_A_CLAIM = re.compile(r"\b(should|shall|will|would|could|can|may|might|must|need to|needs to|going to|want to|"
+                         r"have to|let me|i'?ll|to|please|before|if|whether|never|not|don'?t|didn'?t|haven'?t)\s+"
+                         r"(?:\w+\s+){0,2}$", re.I)
+
+
+def _claim_paths(sid, st, name):
+    """Files a cited name can mean: the name itself when absolute, else every read file whose path ends with it,
+    else the name under the contract root. Fixes bare names resolved against the wrong repo."""
+    if name.startswith(("/", "~")):
+        return [norm(name)]
+    tail = "/" + name.lstrip("./")
+    read = sorted({e["path"] for e in ledger(sid) if e.get("kind") == "read" and e.get("agent") is None
+                   and e.get("path", "").endswith(tail)})
+    return read or [norm(name, st["root"])]
+
+
 def claim_check(sid, st, msg):
+    """Every path:line cited and every file said to be read must be in the main session's ledger. Questions and
+    plans ("should I read `X`?", "I'll read `X`") are not claims."""
     miss = []
-    root = st["root"]
     for m in CITE.finditer(msg or ""):
-        p = norm(m.group(1), root)
-        if not os.path.isfile(p):
-            continue
         a = int(m.group(2))
         b = int(m.group(3) or a)
-        got = coverage(sid, st, p, 0)[0]
-        if not all(i in got for i in range(a, b + 1)):
+        paths = [p for p in _claim_paths(sid, st, m.group(1)) if os.path.isfile(p)]
+        if not paths:
+            continue  # not a file on this device (a URL, a line in another machine's file): nothing to check
+        if not any(all(i in coverage(sid, st, p, 0)[0] for i in range(a, b + 1)) for p in paths):
             miss.append(f"cited {m.group(1)}:{m.group(2)}{'-' + m.group(3) if m.group(3) else ''} but those lines were never read")
     for m in READ_CLAIM.finditer(msg or ""):
-        p = norm(m.group(1), root)
-        if os.path.isfile(p) and not coverage(sid, st, p, 0)[0]:
+        start = (msg or "").rfind("\n", 0, m.start()) + 1
+        before = msg[start:m.start()]
+        end = re.search(r"[.!?\n]", msg[m.end():])
+        sentence_end = msg[m.end() + end.start()] if end else ""
+        if NOT_A_CLAIM.search(before + " ") or sentence_end == "?":
+            continue
+        paths = [p for p in _claim_paths(sid, st, m.group(1)) if os.path.isfile(p)]
+        if paths and not any(coverage(sid, st, p, 0)[0] for p in paths):
             miss.append(f"said {m.group(1)} was read, but no read of it is in the ledger")
     return miss
 
@@ -1158,7 +1404,7 @@ def quote_check(sid, st, c, msg, since):
     """For REQUIRE Read FULL+QUOTE: ask for 3 random lines, then check the quote exactly."""
     q = st.get("quote")
     if q:
-        ok = all(line.strip() and line.strip() in (msg or "") for line in q["lines"])
+        ok = not q.get("tainted") and all(line.strip() and line.strip() in (msg or "") for line in q["lines"])
         st["quote"] = None
         if ok:
             st["quote_passed"].append(q["path"])
@@ -1179,7 +1425,8 @@ def quote_check(sid, st, c, msg, since):
                 log(sid, kind="round-failed", task=n)
                 return (f"quiz failed 3 times: task {n} is failed. Every file of task {n} must be read again in full; "
                         "the quiz starts over after that")
-            return f"the quote of {q['path']} did not match. Strike {st['strikes'][k]}/3 for task {n}"
+            why = "the file was opened while the quiz was pending" if q.get("tainted") else "the quote did not match"
+            return f"quiz on {q['path']} failed: {why}. Strike {st['strikes'][k]}/3 for task {n}"
         return f"the quote of {q['path']} did not match; read it in full again"
     for t in c["tasks"] + [c["global"]]:
         for r in t["require"]:
@@ -1190,7 +1437,7 @@ def quote_check(sid, st, c, msg, since):
                 continue
             with open(p, encoding="utf-8", errors="replace") as f:
                 lines = [(i + 1, x) for i, x in enumerate(f.read().split("\n")) if len(x.strip()) > 12]
-            pick = random.sample(lines, min(3, len(lines)))
+            pick = sorted(RNG.sample(lines, min(RNG.randint(QUIZ_MIN, QUIZ_MAX), len(lines))))
             st["quote"] = {"path": p, "lines": [x for _, x in pick]}
             return (f"quote lines {', '.join(str(i) for i, _ in pick)} of {p} exactly, each on its own line, "
                     "with no tool call")
@@ -1204,13 +1451,14 @@ def quote_check(sid, st, c, msg, since):
             left = [p for p in paths if p not in st["quote_passed"]]
             if len(paths) - len(left) >= int(r["value"]) or not left:
                 continue
-            p = random.choice(left)  # drawn now, after the reading: unknown in advance
+            p = RNG.choice(left)  # drawn now, after the reading: unknown in advance
             with open(p, encoding="utf-8", errors="replace") as fh:
                 lines = [(i + 1, x) for i, x in enumerate(fh.read().split("\n")) if len(x.strip()) > 12]
             if not lines:
                 st["quote_passed"].append(p)
                 continue
-            pick = random.sample(lines, min(3, len(lines)))
+            # the hook draws both the count (3 to 8, never more than 8) and the lines
+            pick = sorted(RNG.sample(lines, min(RNG.randint(QUIZ_MIN, QUIZ_MAX), len(lines))))
             st["quote"] = {"path": p, "lines": [x for _, x in pick], "task": t["n"]}
             return (f"quiz: quote lines {', '.join(str(i) for i, _ in pick)} of {p} exactly, each on its own line, "
                     "with no tool call")
@@ -1235,10 +1483,11 @@ def on_stop(inp):
         return None
     msg = inp.get("last_assistant_message", "")
     phase = st["phase"]
-    miss = claim_check(sid, st, msg)
-    if phase == "OPENING":
+    task_n = _task_number(sid, st)
+    miss = [] if lifted(st, "claims", task_n) else claim_check(sid, st, msg)
+    if phase in NEGOTIATION and st["current"] == "OPENING" and not lifted(st, "opening"):
         c = load_contract(sid, st, "OPENING")
-        miss += [f"{r['kind']}: {norm(r['value'], st['root'])}" for t in c["tasks"] + [c["global"]]
+        miss += [f"{r['kind']}: {resolve(r['value'], st['root'])}" for t in c["tasks"] + [c["global"]]
                  for r in t["require"] if not require_met(sid, st, r, 0)]
     elif phase == "ACTIVE":
         p = contract_file(sid, st["current"])
@@ -1254,13 +1503,29 @@ def on_stop(inp):
             save_state(sid, st)
             return None  # one closing turn; the report must name what is not done
         since = st["signed_at"]
-        for t in c["tasks"]:
-            miss += [f"task {t['n']}: {m}" for m in task_open(sid, st, t, st["current"], since)]
-        miss += goals_missing(sid, st, c, since)
-        q = quote_check(sid, st, c, msg, since)
+        # strict, but only for what is due: the current task (the first with an unmet line, so a line put off
+        # on purpose keeps showing) and goals up to it; future tasks are not listed.
+        i, t = current_task(sid, st, c, st["current"], since)
+        # grade a pending quiz answer first, so a pass counts in this same stop
+        q = None if lifted(st, "quiz", i + 1) else quote_check(sid, st, c, msg, since)
+        i, t = current_task(sid, st, c, st["current"], since)
+        due = [f"task {t['n']}: {m}" for m in task_open(sid, st, t, st["current"], since)]
+        upto = dict(c, tasks=c["tasks"][:i + 1])
+        due += goals_missing(sid, st, upto, since)
         if q:
-            miss.append(q)
-        if not miss:
+            due.append(q)
+        denied = [e for e in ledger(sid) if e.get("kind") == "deny" and e["t"] >= st.get("turn_start", 0)
+                  and e.get("agent") is None]
+        if denied:
+            due.append(f"{len(denied)} call(s) refused this turn, e.g. {denied[0]['tool']} {denied[0]['key'][:80]}: "
+                       "report them to the owner")
+        all_met = not due and i == len(c["tasks"]) - 1 and not task_open(sid, st, t, st["current"], since)
+        if lifted(st, "stop", i + 1):
+            if due:
+                log(sid, kind="stop-lifted", missing=due)
+            due = []
+        miss += due
+        if not miss and all_met:
             st["phase"] = "DONE"
             log(sid, kind="closed", label=st["current"], finished=True)
             save_state(sid, st)
@@ -1278,7 +1543,8 @@ def on_stop(inp):
         return None  # nothing changed since the last block: end the turn and report it to the owner
     st["last_block"] = [sig, n_ledger]
     save_state(sid, st)
-    return block(f"Contract {st['current']} is not done:\n- " + "\n- ".join(miss))
+    shown = miss[:12] + ([f"... and {len(miss) - 12} more (status bar)"] if len(miss) > 12 else [])
+    return block(f"Contract {st['current']} is not done:\n- " + "\n- ".join(shown))
 
 
 def on_subagent_stop(inp):

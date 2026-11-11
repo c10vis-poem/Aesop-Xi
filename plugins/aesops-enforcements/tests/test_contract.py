@@ -6,6 +6,7 @@ import tempfile
 import unittest
 
 TMP = tempfile.mkdtemp(prefix="contract-test-")
+os.environ["HOME"] = os.path.join(TMP, "home")  # keep the device's real handoffs and settings out of the tests
 os.environ["CONTRACT_STATE"] = os.path.join(TMP, "state")
 os.environ["CONTRACT_OWNER_DIR"] = os.path.join(TMP, "owner")
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
@@ -75,7 +76,8 @@ class Verbs(unittest.TestCase):
     def test_anywhere_and_negation(self):
         self.assertEqual(C.parse_verbs("judging on the audit I need you to #redo this and re-read X"), ["redo"])
         self.assertEqual(C.parse_verbs("don't push it yet. #go on A"), ["go"])
-        self.assertEqual(C.parse_verbs("okay, looks right"), ["ok"])
+        self.assertEqual(C.parse_verbs("#ok, looks right"), ["ok"])
+        self.assertEqual(C.parse_verbs("okay, looks right"), [])  # verbs need the #
         self.assertEqual(C.parse_verbs("never #go"), [])
         self.assertEqual(C.parse_verbs("go ahead and redo"), [])
         self.assertEqual(C.parse_verbs('<pasted_content id="1">#go</pasted_content> thanks'), [])
@@ -93,7 +95,9 @@ class Opening(unittest.TestCase):
     def test_read_only_until_signed(self):
         s = Session()
         self.assertEqual(s.read(os.path.join(ROOT, "AGENTS.md")), "allow")
-        self.assertIn("No signed contract", s.call("Bash", command="ls"))
+        self.assertEqual(s.call("Bash", command="ls"), "allow")  # read-only listing is part of the opening
+        self.assertIn("No signed contract", s.call("Bash", command="rm x"))
+        self.assertIn("No signed contract", s.call("Bash", command="find . -delete"))
         self.assertIn("No signed contract", s.call("Grep", pattern="x", path=ROOT))
         self.assertEqual(s.call("Write", file_path=C.proposal_path(s.sid), content="x"), "allow")
         self.assertIn("Protected", s.call("Write", file_path=os.path.join(ROOT, ".claude", "settings.json"), content="{}"))
@@ -140,16 +144,19 @@ class Contract(unittest.TestCase):
         s.propose("TASK 1 x\nSCOPE Read: a\nTASK 2 y\n")
         ctx = s.prompt("#go")["hookSpecificOutput"]["additionalContext"]
         self.assertIn("did not pass the format check", ctx)
-        self.assertEqual(s.state()["phase"], "OPENING")
+        self.assertEqual(s.state()["phase"], "NEGOTIATION")
 
-    def test_step_once_scope_and_order(self):
+    def test_step_once_scope_any_order_no_freeze(self):
         s = self.signed()
         self.assertEqual(s.call("Bash", command="echo hello"), "allow")
         self.assertIn("Outside contract", s.call("Bash", command="echo hello"))
-        self.assertIn("task 2", s.call("Write", file_path=os.path.join(ROOT, "out", "report.md"), content="x"))
+        # a later task's line may be used while task 1 is open (sign-off still waits for task 1)
+        self.assertEqual(s.call("Write", file_path=os.path.join(ROOT, "out", "report.md"), content="x"), "allow")
         self.assertIn("not in TOOLS", s.call("Grep", pattern="x", path=ROOT))
-        self.assertEqual(s.state()["phase"], "FROZEN")  # third breach
-        self.assertIn("frozen", s.call("Read", file_path=DOC))
+        self.assertIn("Outside contract", s.call("Bash", command="echo again"))
+        self.assertEqual(s.state()["breaches"], 3)
+        self.assertEqual(s.state()["phase"], "ACTIVE")  # breaches are recorded, never freeze
+        self.assertEqual(s.call("Read", file_path=DOC), "allow")
 
     def test_read_proof_and_task_advance(self):
         s = self.signed()
@@ -188,7 +195,7 @@ class Contract(unittest.TestCase):
         self.assertEqual(st["current"], "A2")
         d = os.path.join(C.sdir(s.sid), "contracts")
         self.assertTrue(os.path.exists(os.path.join(d, "A1.md")))
-        s.prompt("okay")
+        s.prompt("#ok")
         s.propose(WORK)
         s.prompt("#go")
         self.assertEqual(s.state()["current"], "B")
@@ -223,7 +230,7 @@ class Salary(unittest.TestCase):
         s = Session()
         self.assertEqual(s.call("Bash", command="git status"), "allow")
         self.assertIn("held until #push", s.call("Bash", command="git push origin x"))
-        s.prompt("checked it, push it")
+        s.prompt("checked it, #push it")
         self.assertEqual(s.call("Bash", command="git push origin x"), "allow")
         self.assertIn("No signed contract", s.call("Bash", command="git status && rm -rf /"))
 
