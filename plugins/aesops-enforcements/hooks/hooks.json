@@ -1,12 +1,18 @@
 {
+  "description": "Contract enforcement: one gate, one stop gate, one ledger.",
   "hooks": {
     "SessionStart": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-gate.sh\" --event SessionStart",
-            "timeout": 40
+            "command": "python3",
+            "args": [
+              "-I",
+              "${CLAUDE_PLUGIN_ROOT}/lib/hook.py",
+              "SessionStart"
+            ],
+            "timeout": 20
           }
         ]
       }
@@ -16,8 +22,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-gate.sh\" --event UserPromptSubmit",
-            "timeout": 40
+            "command": "python3",
+            "args": [
+              "-I",
+              "${CLAUDE_PLUGIN_ROOT}/lib/hook.py",
+              "UserPromptSubmit"
+            ],
+            "timeout": 20
           }
         ]
       }
@@ -27,8 +38,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-gate.sh\" --event PreToolUse",
-            "timeout": 180
+            "command": "python3",
+            "args": [
+              "-I",
+              "${CLAUDE_PLUGIN_ROOT}/lib/hook.py",
+              "PreToolUse"
+            ],
+            "timeout": 20
           }
         ]
       }
@@ -38,30 +54,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-gate.sh\" --event PostToolUse",
-            "timeout": 40
-          }
-        ]
-      }
-    ],
-    "PostToolUseFailure": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-gate.sh\" --event PostToolUseFailure",
-            "timeout": 40
-          }
-        ]
-      }
-    ],
-    "PermissionDenied": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-gate.sh\" --event PermissionDenied",
-            "timeout": 40
+            "command": "python3",
+            "args": [
+              "-I",
+              "${CLAUDE_PLUGIN_ROOT}/lib/hook.py",
+              "PostToolUse"
+            ],
+            "timeout": 20
           }
         ]
       }
@@ -71,8 +70,29 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-gate.sh\" --event Stop",
-            "timeout": 45
+            "command": "python3",
+            "args": [
+              "-I",
+              "${CLAUDE_PLUGIN_ROOT}/lib/hook.py",
+              "Stop"
+            ],
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3",
+            "args": [
+              "-I",
+              "${CLAUDE_PLUGIN_ROOT}/lib/hook.py",
+              "SubagentStart"
+            ],
+            "timeout": 20
           }
         ]
       }
@@ -82,19 +102,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-gate.sh\" --event SubagentStop",
-            "timeout": 40
-          }
-        ]
-      }
-    ],
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-gate.sh\" --event SessionEnd",
-            "timeout": 100
+            "command": "python3",
+            "args": [
+              "-I",
+              "${CLAUDE_PLUGIN_ROOT}/lib/hook.py",
+              "SubagentStop"
+            ],
+            "timeout": 60
           }
         ]
       }

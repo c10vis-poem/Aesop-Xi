@@ -1,331 +1,5 @@
 {
   "disableAllHooks": false,
-  "hooks": {
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" context-diff.sh",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" housekeeping-check.sh",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" staged-updates.sh",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" observe-event.sh",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": ".*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "input=$(cat); export CLAUDE_SESSION_ID=$(printf '%s' \"$input\" | jq -r '.session_id // empty'); printf '%s' \"$input\" | node \"${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/cache/ecc/ecc/2.2.0}/scripts/hooks/session-activity-tracker.js\" 2>/dev/null || true",
-            "async": true,
-            "timeout": 10
-          }
-        ],
-        "description": "Real, per-tool-call usage log to ~/.claude/metrics/tool-usage.jsonl -- best-effort, needs ECC installed in this session (attach ECC-aesop) to actually record."
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "prompt",
-            "prompt": "The user has the ECC plugin's git-workflow, github-ops, code-reviewer, security-reviewer, orch-add-feature, and hookify skills/agents available. Here is a Bash tool call that just ran: $ARGUMENTS\n\nOnly flag if the command is git commit / git push / gh pr create|merge / gh api on branch-protection or repo settings, AND there is no sign in the command or its context that a review or CI check already happened (e.g. it is not going through an already-set-up PR+CI+auto-merge flow). If it's a routine read-only git/gh command (status, log, diff, fetch, api GET), or part of an already-established PR flow, respond OK. Otherwise respond with a one-line flag naming which skill/agent should have been used instead and why.",
-            "timeout": 15,
-            "continueOnBlock": true
-          }
-        ],
-        "description": "Flags (does not block) Bash git/GitHub commands that look like unreviewed raw work bypassing an available ECC skill/agent."
-      },
-      {
-        "matcher": "Edit|Write|Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" session-ledger.sh",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "Read",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" build-doc-gate.sh",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" delegation-tripwire.sh",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" archive-scratchpad.sh",
-            "timeout": 60
-          },
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" ship-session.sh",
-            "timeout": 30
-          }
-        ]
-      }
-    ],
-    "PreCompact": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" archive-scratchpad.sh",
-            "timeout": 60
-          }
-        ]
-      }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" resume-gate.sh",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" checkin-gate.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash|Read",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" secret-guard.sh",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" enforce-gate.sh",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "Bash|Edit|Write|Read",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" sync-on-use.sh",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" git-gate.sh",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "Bash|Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" branch-current-gate.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash|Write|Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" state-guard.sh",
-            "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" settings-guard.sh",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" build-doc-gate.sh",
-            "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" delegation-tripwire.sh",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "Agent",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" agent-type-gate.sh",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "Write|Edit|NotebookEdit|Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" change-log.sh",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" enforce-prompt.sh",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" delegation-tripwire.sh",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" observe-event.sh",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" stop-gate.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" absence-gate.sh"
-          }
-        ]
-      }
-    ],
-    "PostToolUseFailure": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" observe-event.sh",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "PermissionDenied": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" observe-event.sh",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/hooks/run-hook.sh\" subagent-stop-gate.sh"
-          }
-        ]
-      }
-    ]
-  },
   "extraKnownMarketplaces": {
     "novaexopia": {
       "source": {
@@ -357,5 +31,31 @@
     "nvaex-ui-cockpit@novaexopia": true,
     "greedy-crane@nvaex-vault": true,
     "aesops-enforcements@aesop-xi": true
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat); export CLAUDE_SESSION_ID=$(printf '%s' \"$input\" | jq -r '.session_id // empty'); printf '%s' \"$input\" | node \"${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/cache/ecc/ecc/2.2.0}/scripts/hooks/session-activity-tracker.js\" 2>/dev/null || true",
+            "async": true,
+            "timeout": 10
+          }
+        ],
+        "description": "Real, per-tool-call usage log to ~/.claude/metrics/tool-usage.jsonl -- best-effort, needs ECC installed in this session (attach ECC-aesop) to actually record."
+      }
+    ]
   }
 }
