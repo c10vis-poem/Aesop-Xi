@@ -19,7 +19,8 @@ code, or anything else task related) without one of:
 - a **salary** task the owner approved once (a template in `salary/`, listed in `salary/ACTIVE`).
 
 Until then the agent may only: use the Read tool, load the skills the opening names, and write two files,
-the work order (`proposal.md`) and its notes (`notes.md`), in the session folder.
+the work order (`proposal.md`) and its notes (`notes.md`), in the session folder. After a contract's lines are met,
+no calls at all until the owner's `#ok` or `#redo`.
 
 ## Rule 2: contracts
 1. The owner gives the order: exact job scope and details.
@@ -94,6 +95,9 @@ TASK 2  <title>
 - A compaction voids every read made before it.
 - `Read FULL+QUOTE`: after the full read, the stop gate names three random lines; the agent quotes them with no
   tool call; a miss fails the read.
+- `Quiz: N`: after every file of the task is read in full, the stop gate draws a random file (unknown in advance)
+  and names three random lines; N must pass. A miss is a strike; three strikes fail the task: every read of it is
+  voided, its passes are wiped, and it must be read in full again before the quiz restarts.
 - Claims: every `path:line` the agent cites and every file it says it read must be covered in the ledger, or the
   turn is held.
 
@@ -115,9 +119,9 @@ Counted anywhere in a message the owner types, with anything after them. A negat
 | Verb | Forms | Does |
 |---|---|---|
 | `#go` | `#go` | signs the work order |
-| `#ok` | `#ok`, `okay` | accepts the run |
+| `#ok` | `#ok` | accepts the run |
 | `#redo` | `#redo` | sends the run back |
-| `#push` | `#push`, `push it` | releases the lines held `after: #push` |
+| `#push` | `#push` | releases the lines held `after: #push` |
 
 ## The GitHub protocol (salary)
 `salary/github.md`: forks sync to upstream main first (`gh repo sync`); branch; local commits; every commit and

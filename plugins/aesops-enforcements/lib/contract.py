@@ -122,6 +122,7 @@ def ensure(sid, cwd):
     if st is None:
         st = new_state(sid, cwd)
         open_contract(sid, st, "OPENING", opening_text(st["root"]))
+        fp_save(sid)
         save_state(sid, st)
     return st
 
@@ -130,7 +131,7 @@ def ensure(sid, cwd):
 
 LINE = re.compile(r"^(STEP|SCOPE|REQUIRE\??|END|TOOLS|SKILLS|AGENT|TASK|CONTRACT)(?=\s|$)\s*(.*)$")
 REQ_KINDS = {"Read FULL", "Read FULL+QUOTE", "Read", "Skill", "Agent", "Tool", "Server",
-             "File", "Check", "Write-to-task"}
+             "File", "Check", "Write-to-task", "Quiz"}
 GOAL_KINDS = {"docs", "file", "check", "task"}
 LIMIT_KINDS = {"time", "tokens", "share"}
 
@@ -285,6 +286,43 @@ def sha(path):
     return h.hexdigest()
 
 
+FP_SKIP = {"state.json", ".state.tmp", "ledger.jsonl", "fingerprint.json", "scores.md"}
+
+
+def fingerprint(sid):
+    """sha256 of every protected file: the plugin, this session's contracts, this session's owner copies."""
+    out = {}
+    for base in (PLUGIN_ROOT, os.path.join(sdir(sid), "contracts"), OWNER_DIR):
+        for dp, dn, fn in os.walk(base):
+            dn[:] = [d for d in dn if d != "__pycache__"]
+            for n in fn:
+                if n in FP_SKIP or (base == OWNER_DIR and not n.startswith(sid[:8])):
+                    continue
+                p = os.path.join(dp, n)
+                try:
+                    out[p] = sha(p)
+                except OSError:
+                    pass
+    return out
+
+
+def fp_save(sid):
+    os.makedirs(sdir(sid), exist_ok=True)
+    with open(os.path.join(sdir(sid), "fingerprint.json"), "w") as f:
+        json.dump(fingerprint(sid), f)
+
+
+def fp_changed(sid):
+    """Protected files added, removed or changed since the last fingerprint. A missing fingerprint counts."""
+    try:
+        with open(os.path.join(sdir(sid), "fingerprint.json")) as f:
+            old = json.load(f)
+    except (OSError, ValueError):
+        return ["fingerprint.json (missing or unreadable)"]
+    new = fingerprint(sid)
+    return sorted(p for p in set(old) | set(new) if old.get(p) != new.get(p))
+
+
 def open_contract(sid, st, label, text):
     d = os.path.join(sdir(sid), "contracts")
     os.makedirs(d, exist_ok=True)
@@ -316,8 +354,8 @@ def owner_copy(sid, label, src):
 
 # ---------------------------------------------------------------- verbs (owner only)
 
-VERBS = [("go", r"#go\b"), ("ok", r"#ok\b|\bokay\b"), ("redo", r"#redo\b"),
-         ("push", r"#push\b|\bpush it\b")]
+VERBS = [("go", r"#go\b"), ("ok", r"#ok\b"), ("redo", r"#redo\b"),
+         ("push", r"#push\b")]
 NEG = re.compile(r"\b(don'?t|do not|never|not|no)\b")
 
 
@@ -344,6 +382,10 @@ def on_prompt(inp):
     sid = inp.get("session_id", "")
     st = ensure(sid, inp.get("cwd"))
     verbs = parse_verbs(inp.get("prompt", ""))
+    bad = fp_changed(sid)
+    if bad:
+        st["phase"] = "FROZEN"
+        log(sid, kind="tamper", files=bad)
     notes = []
     letter = st["current"].rstrip("0123456789") if st["current"] != "OPENING" else None
     for v in verbs:
@@ -366,6 +408,12 @@ def on_prompt(inp):
         notes.append("The owner approved the push (#push): lines held 'after: #push' are now open.")
     if st.get("stopped_unmet"):
         notes.append("Last turn ended with requirements unmet: " + "; ".join(st.pop("stopped_unmet")))
+    if bad:
+        notes.append("Protected files changed since the last check; session frozen: " + ", ".join(bad[:10])
+                     + ". The owner re-fingerprints with: python3 -I " + os.path.join(PLUGIN_ROOT, "lib", "hook.py")
+                     + " refingerprint " + sid)
+    else:
+        fp_save(sid)
     save_state(sid, st)
     notes.append(status_line(sid, st))
     return {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
@@ -452,6 +500,8 @@ def on_start(inp):
         st = new_state(sid, inp.get("cwd"))
         open_contract(sid, st, "OPENING", opening_text(st["root"]))
         save_state(sid, st)
+    if not os.path.exists(os.path.join(sdir(sid), "fingerprint.json")):
+        fp_save(sid)
     c = load_contract(sid, st, "OPENING")
     req = [f"{r['kind']}: {norm(r['value'], st['root'])}" + (" (if it exists)" if r.get("optional") else "")
            for t in c["tasks"] for r in t["require"]]
@@ -488,8 +538,8 @@ def protection(sid, tool, ti):
         p = norm(ti.get("file_path", ""))
         if SECRET_FILE.search(p):
             return f"Protected: {p} looks like a secret file. Reading it would put the secret in the transcript."
-    if tool == "Bash":
-        cmd = ti.get("command", "")
+    if tool == "Bash" or tool.startswith("mcp__"):
+        cmd = ti.get("command", "") if tool == "Bash" else json.dumps(ti)
         if SECRET_BASH.search(cmd):
             return "Protected: this command prints secrets or skips or reroutes git hooks."
         for d in protected_paths(sid):
@@ -565,7 +615,7 @@ def _is_fork(st, root):
         return st["forks"][root]
     try:
         r = subprocess.run(["gh", "repo", "view", "--json", "isFork", "--jq", ".isFork"], cwd=root,
-                           capture_output=True, text=True, timeout=20)
+                           capture_output=True, text=True, timeout=5)
         v = r.stdout.strip() == "true"
     except (OSError, subprocess.SubprocessError):
         v = False
@@ -612,7 +662,7 @@ def coverage(sid, st, path, since, agent=None):
             total = len(f.read().split("\n"))
     except OSError:
         return set(), 0, None
-    since = max(since, st.get("compact_at", 0))
+    since = max(since, st.get("compact_at", 0), st.get("void", {}).get(path, 0))  # a failed round voids its reads
     got = set()
     for e in ledger(sid):
         if e.get("kind") == "read" and e.get("path") == path and e.get("sha") == cur and e["t"] >= since \
@@ -671,7 +721,7 @@ def require_met(sid, st, r, since, agent=None):
 
 def run_check(cmd, root):
     try:
-        return subprocess.run(cmd, shell=True, cwd=root, capture_output=True, timeout=120).returncode == 0
+        return subprocess.run(cmd, shell=True, cwd=root, capture_output=True, timeout=15).returncode == 0
     except (OSError, subprocess.SubprocessError):
         return False
 
@@ -681,7 +731,13 @@ def task_open(sid, st, task, label, since, agent=None):
     used = used_steps(sid, label)
     missing = [f"STEP {s['kind']}: {s['value']}" for s in task["step"] if s["id"] not in used]
     missing += [f"REQUIRE {r['kind']}: {r['value']}" for r in task["require"]
-                if not require_met(sid, st, r, since, agent)]
+                if r["kind"] != "Quiz" and not require_met(sid, st, r, since, agent)]
+    for r in task["require"]:
+        if r["kind"] == "Quiz":
+            paths = [norm(x["value"], st["root"]) for x in task["require"] if x["kind"].startswith("Read FULL")]
+            done = len([p for p in paths if p in st.get("quote_passed", [])])
+            if done < int(r["value"]):
+                missing.append(f"REQUIRE Quiz: {done} of {r['value']} passed")
     return missing
 
 
@@ -783,9 +839,23 @@ def on_pretool(inp):
     st = ensure(sid, inp.get("cwd"))
     tool, ti = inp.get("tool_name", ""), inp.get("tool_input", {}) or {}
     agent = inp.get("agent_id")
+    bad = fp_changed(sid)
+    if bad:
+        st["phase"] = "FROZEN"
+        log(sid, kind="tamper", files=bad)
+        if tool == "Read":
+            save_state(sid, st)
+            return None
+        return _deny(sid, st, tool, ti, agent, "Protected files changed: " + ", ".join(bad[:5])
+                     + ". Session frozen; only the owner re-fingerprints it.", count=False)
     r = protection(sid, tool, ti)
     if r:
         return _deny(sid, st, tool, ti, agent, r, count=st["phase"] == "ACTIVE")
+    if st["phase"] == "DONE":
+        if tool == "Read":
+            return None
+        return _deny(sid, st, tool, ti, agent, f"Contract {st['current']} waits for the owner's #ok or #redo. "
+                     "Only reads, to show the owner the results, until then.", count=False)
     if tool in FREE_TOOLS:
         return None
     if tool in WRITE_TOOLS and norm(ti.get(PATH_TOOLS[tool], "")) in (proposal_path(sid), notes_path(sid)):
@@ -806,7 +876,7 @@ def on_pretool(inp):
     if agent and agent in st["agents"]:
         return _sub_gate(sid, st, inp, tool, ti, agent)
     phase = st["phase"]
-    if phase in ("OPENING", "IDLE", "DONE"):
+    if phase in ("OPENING", "IDLE"):
         c = load_contract(sid, st, "OPENING")
         skills = [s for t in c["tasks"] + [c["global"]] for s in t["skills"]]
         if tool == "Read" or (tool == "Skill" and tool_skill(ti) in [s.split(":")[-1] for s in skills]):
@@ -815,6 +885,8 @@ def on_pretool(inp):
                      f"No signed contract (phase {phase}). Only reads, the opening's skills and the work order "
                      f"({proposal_path(sid)}) are allowed. Write the work order; the owner signs it with #go.",
                      count=False)
+    if phase == "FROZEN" and tool == "Read":
+        return None
     if phase == "FROZEN":
         return _deny(sid, st, tool, ti, agent, f"Contract {st['current']} is frozen after {BREACH_LIMIT} breaches. "
                      "Only the owner's #ok or #redo opens it.", count=False)
@@ -930,6 +1002,7 @@ def _spawn(sid, st, c, task, g, inp, tool, ti, label, i, agent):
     with open(p, "w") as f:
         f.write(m.group(0))
     os.chmod(p, 0o444)
+    fp_save(sid)
     st["spawns"].append({"label": sub_label, "type": typ, "parent": label, "agent_id": None, "t": now()})
     _allow(sid, st, tool, ti, agent, label=label, task=i + 1, sub=sub_label)
     return None
@@ -1044,7 +1117,7 @@ def read_proof(ti, tr):
     ranges, a = [], None
     for k, line in enumerate(got):
         n = start + k
-        ok = n - 1 < len(disk) and hashlib.sha256(line.encode()).digest() == hashlib.sha256(disk[n - 1].encode()).digest()
+        ok = n - 1 < len(disk) and hashlib.sha256(line.rstrip("\r").encode()).digest() == hashlib.sha256(disk[n - 1].rstrip("\r").encode()).digest()
         if ok and a is None:
             a = n
         if not ok and a is not None:
@@ -1092,6 +1165,21 @@ def quote_check(sid, st, c, msg, since):
             log(sid, kind="quote", path=q["path"], passed=True)
             return None
         log(sid, kind="quote", path=q["path"], passed=False)
+        n = q.get("task")
+        if n is not None:
+            k = str(n)
+            st.setdefault("strikes", {})[k] = st.get("strikes", {}).get(k, 0) + 1
+            if st["strikes"][k] >= 3:
+                t = next(x for x in c["tasks"] if x["n"] == n)
+                paths = [norm(x["value"], st["root"]) for x in t["require"] if x["kind"].startswith("Read FULL")]
+                for p in paths:
+                    st.setdefault("void", {})[p] = now()
+                st["quote_passed"] = [p for p in st["quote_passed"] if p not in paths]
+                st["strikes"][k] = 0
+                log(sid, kind="round-failed", task=n)
+                return (f"quiz failed 3 times: task {n} is failed. Every file of task {n} must be read again in full; "
+                        "the quiz starts over after that")
+            return f"the quote of {q['path']} did not match. Strike {st['strikes'][k]}/3 for task {n}"
         return f"the quote of {q['path']} did not match; read it in full again"
     for t in c["tasks"] + [c["global"]]:
         for r in t["require"]:
@@ -1106,6 +1194,26 @@ def quote_check(sid, st, c, msg, since):
             st["quote"] = {"path": p, "lines": [x for _, x in pick]}
             return (f"quote lines {', '.join(str(i) for i, _ in pick)} of {p} exactly, each on its own line, "
                     "with no tool call")
+    for t in c["tasks"]:
+        for r in t["require"]:
+            if r["kind"] != "Quiz":
+                continue
+            paths = [norm(x["value"], st["root"]) for x in t["require"] if x["kind"].startswith("Read FULL")]
+            if not paths or not all(full_read(sid, st, p, since) for p in paths):
+                continue  # the quiz comes only after every file of the task is read
+            left = [p for p in paths if p not in st["quote_passed"]]
+            if len(paths) - len(left) >= int(r["value"]) or not left:
+                continue
+            p = random.choice(left)  # drawn now, after the reading: unknown in advance
+            with open(p, encoding="utf-8", errors="replace") as fh:
+                lines = [(i + 1, x) for i, x in enumerate(fh.read().split("\n")) if len(x.strip()) > 12]
+            if not lines:
+                st["quote_passed"].append(p)
+                continue
+            pick = random.sample(lines, min(3, len(lines)))
+            st["quote"] = {"path": p, "lines": [x for _, x in pick], "task": t["n"]}
+            return (f"quiz: quote lines {', '.join(str(i) for i, _ in pick)} of {p} exactly, each on its own line, "
+                    "with no tool call")
     return None
 
 
@@ -1117,6 +1225,13 @@ def on_stop(inp):
     sid = inp.get("session_id", "")
     st = load_state(sid)
     if st is None:
+        return None
+    bad = fp_changed(sid)
+    if bad:
+        st["phase"] = "FROZEN"
+        st["stopped_unmet"] = ["protected files changed, session frozen: " + ", ".join(bad[:10])]
+        log(sid, kind="tamper", files=bad)
+        save_state(sid, st)
         return None
     msg = inp.get("last_assistant_message", "")
     phase = st["phase"]
@@ -1150,7 +1265,7 @@ def on_stop(inp):
             log(sid, kind="closed", label=st["current"], finished=True)
             save_state(sid, st)
             return {"hookSpecificOutput": {"hookEventName": "Stop", "additionalContext":
-                    f"Contract {st['current']} met every line; it waits for the owner's #ok or #redo."}}
+                    f"Every line of contract {st['current']} is met. Report each step you did. Do not call it done: only the owner's #ok closes it. No calls until #ok or #redo."}}
     if not miss:
         save_state(sid, st)
         return None
