@@ -133,6 +133,26 @@ class Opening(unittest.TestCase):
         s.open_all()
         self.assertEqual(s.stop(), "end")
 
+
+class SalaryStep(unittest.TestCase):
+    """A STEP that is also a GitHub-protocol command is ticked off when it runs (it used to stay unmet forever)."""
+
+    def test_git_step_ticks(self):
+        work = f"""CONTRACT   type: contract   root: {ROOT}
+TASK 1  fetch
+  STEP Bash: git -C /some/repo fetch origin
+TASK 2  report
+  REQUIRE File: {{root}}/out/never.md
+"""
+        s = Session()
+        s.open_all()
+        s.propose(work)
+        self.assertIn("signed", s.prompt("#go"))
+        self.assertEqual(s.call("Bash", command="git -C /some/repo fetch origin"), "allow")
+        out = s.stop()
+        self.assertNotIn("STEP Bash: git -C /some/repo fetch origin", out)
+        self.assertIn("task 2", out)
+
     def test_phase_name_and_listing(self):
         s = Session()
         self.assertEqual(s.state()["phase"], "NEGOTIATION")

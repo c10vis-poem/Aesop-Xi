@@ -7,8 +7,8 @@
     {
       "name": "aesops-enforcements",
       "source": "./plugins/aesops-enforcements",
-      "description": "The operator's rules and their hooks in one plugin: RULES.md, the gates, the gate CLI, tests. Enabled from settings in every repo and on every device.",
-      "version": "0.2.0"
+      "description": "Contract enforcement: no work without a signed contract. One gate, one stop gate, one ledger; STEP, SCOPE, REQUIRE and END lines; provable reads. Enabled from settings in every repo and on every device.",
+      "version": "1.0.1"
     }
   ]
 }
