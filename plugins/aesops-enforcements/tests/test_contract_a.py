@@ -126,12 +126,42 @@ def signed():
 
 class Opening(unittest.TestCase):
     def test_newest_handoff_required(self):
+        # the reminder names the newest handoff only; the stop is never blocked in the opening
         s = Session()
-        out = s.stop()
-        self.assertIn(NEW_H, out)
-        self.assertNotIn(OLD_H, out)
-        s.open_all()
         self.assertEqual(s.stop(), "end")
+        left = " ".join(s.state()["opening_unmet"])
+        self.assertIn(NEW_H, left)
+        self.assertNotIn(OLD_H, left)
+        s.open_all()
+        s.stop()
+        self.assertEqual(s.state()["opening_unmet"], [])
+
+    def test_statusline_shows_opening_reminder(self):
+        s = Session()
+        s.stop()
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+        import statusline
+        self.assertIn("opening:", statusline.render({"session_id": s.sid}))
+
+
+class SalaryStep(unittest.TestCase):
+    """A STEP that is also a GitHub-protocol command is ticked off when it runs (it used to stay unmet forever)."""
+
+    def test_git_step_ticks(self):
+        work = f"""CONTRACT   type: contract   root: {ROOT}
+TASK 1  fetch
+  STEP Bash: git -C /some/repo fetch origin
+TASK 2  report
+  REQUIRE File: {{root}}/out/never.md
+"""
+        s = Session()
+        s.open_all()
+        s.propose(work)
+        self.assertIn("signed", s.prompt("#go"))
+        self.assertEqual(s.call("Bash", command="git -C /some/repo fetch origin"), "allow")
+        out = s.stop()
+        self.assertNotIn("STEP Bash: git -C /some/repo fetch origin", out)
+        self.assertIn("task 2", out)
 
     def test_phase_name_and_listing(self):
         s = Session()

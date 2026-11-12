@@ -35,6 +35,9 @@ def render(inp):
         parts.append("quiz pending")
     if st.get("fp_warn"):
         parts.append(f"WARN {len(st['fp_warn'])} protected file(s) changed outside git")
+    if phase in C.NEGOTIATION and st.get("opening_unmet"):
+        parts.append(f"opening: {len(st['opening_unmet'])} read(s) left")
+        first = first or st["opening_unmet"][0]
     line = " | ".join(parts)
     return line + ("\n" + first[:140] if first else "")
 

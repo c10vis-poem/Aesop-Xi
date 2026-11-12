@@ -1080,7 +1080,12 @@ def on_pretool(inp):
                     ok, need = after_met(sid, st, item, st["root"])
                     save_state(sid, st)
                     if ok:
-                        _allow(sid, st, tool, ti, agent, inp=inp, label="salary:" + name)
+                        step = _salary_step(sid, st, tool, inp, agent)
+                        if step:  # the same call is also a STEP of the signed contract: tick it off there too
+                            _allow(sid, st, tool, ti, agent, inp=inp, label=st["current"], step=step,
+                                   salary=name)
+                        else:
+                            _allow(sid, st, tool, ti, agent, inp=inp, label="salary:" + name)
                         return None
                     return _deny(sid, st, tool, ti, agent,
                                  f"Salary protocol {name}: '{item['kind']}: {item['value']}' is held until {need}.",
@@ -1122,6 +1127,27 @@ def on_pretool(inp):
         return _deny(sid, st, tool, ti, agent, f"Hard limit: {hit}. No more calls; write the closing report and "
                      "name everything not done.", count=False)
     return _contract_gate(sid, st, c, inp, tool, ti, st["current"], st["signed_at"], agent)
+
+
+def _salary_step(sid, st, tool, inp, agent):
+    """The id of an unused STEP of the main session's signed contract that this salary-allowed call also matches, or
+    None. Without this, a STEP that is also a GitHub-protocol command (fetch, switch, commit, push, PR) could never be
+    ticked off, so the contract could never close."""
+    if agent or st["phase"] != "ACTIVE":
+        return None
+    c = load_contract(sid, st)
+    if not c:
+        return None
+    used = used_steps(sid, st["current"])
+    ti = inp.get("tool_input", {}) or {}
+    canon = dict(inp, tool_input=dict(ti, command=canonical_bash(ti.get("command", "")))) if tool == "Bash" else inp
+    for s in _union(c)["step"]:
+        if s["id"] in used:
+            continue
+        if line_matches(tool, inp, s, st["root"], exact=True) or line_matches(tool, canon, s, st["root"], exact=True):
+            if after_met(sid, st, s, st["root"])[0]:
+                return s["id"]
+    return None
 
 
 def tool_skill(ti):
@@ -1538,12 +1564,17 @@ def on_stop(inp):
     msg = inp.get("last_assistant_message", "")
     phase = st["phase"]
     task_n = _task_number(sid, st)
-    miss = [] if lifted(st, "claims", task_n) else claim_check(sid, st, msg)
-    if phase in NEGOTIATION and st["current"] == "OPENING" and not lifted(st, "opening"):
+    if phase in NEGOTIATION:
+        # Owner, 2026-11-12: no stop hooks in the opening or in negotiation. Unmet opening reads are a reminder in the
+        # status bar (st["opening_unmet"]), never a block.
         c = load_contract(sid, st, "OPENING")
-        miss += [f"{r['kind']}: {resolve(r['value'], st['root'])}" for t in c["tasks"] + [c["global"]]
-                 for r in t["require"] if not require_met(sid, st, r, 0)]
-    elif phase == "ACTIVE":
+        st["opening_unmet"] = [f"{r['kind']}: {resolve(r['value'], st['root'])}"
+                               for t in c["tasks"] + [c["global"]] for r in t["require"]
+                               if not require_met(sid, st, r, 0)] if c and st["current"] == "OPENING" else []
+        save_state(sid, st)
+        return None
+    miss = [] if lifted(st, "claims", task_n) else claim_check(sid, st, msg)
+    if phase == "ACTIVE":
         p = contract_file(sid, st["current"])
         if not os.path.exists(p) or sha(p) != st["hash"]:
             st["phase"] = "FROZEN"
