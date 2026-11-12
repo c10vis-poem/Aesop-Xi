@@ -114,15 +114,11 @@ class Opening(unittest.TestCase):
         self.assertIn("Protected", s.call("Write", file_path=os.path.join(ROOT, ".claude", "settings.json"), content="{}"))
         self.assertIn("Protected", s.call("Bash", command="cat ~/.claude/settings.json"))
 
-    def test_opening_reads_remind_never_block(self):
-        # owner, 2026-11-12: no stop hooks in the opening or negotiation; unmet reads are a status-bar reminder
+    def test_opening_requires_hold_the_turn(self):
         s = Session()
-        self.assertEqual(s.stop(), "end")
-        st = C.load_state(s.sid)
-        self.assertTrue(any("AGENTS.md" in x for x in st["opening_unmet"]))
+        self.assertIn("AGENTS.md", s.stop())
         s.read(os.path.join(ROOT, "AGENTS.md"))
-        s.stop()
-        self.assertFalse(any("AGENTS.md" in x for x in C.load_state(s.sid)["opening_unmet"]))
+        self.assertEqual(s.stop(), "end")
 
 
 WORK = f"""CONTRACT   type: contract   project: test   root: {ROOT}

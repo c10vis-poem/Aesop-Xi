@@ -1564,17 +1564,12 @@ def on_stop(inp):
     msg = inp.get("last_assistant_message", "")
     phase = st["phase"]
     task_n = _task_number(sid, st)
-    if phase in NEGOTIATION:
-        # Owner, 2026-11-12: no stop hooks in the opening or in negotiation. Unmet opening reads are a reminder in the
-        # status bar (st["opening_unmet"]), never a block.
-        c = load_contract(sid, st, "OPENING")
-        st["opening_unmet"] = [f"{r['kind']}: {resolve(r['value'], st['root'])}"
-                               for t in c["tasks"] + [c["global"]] for r in t["require"]
-                               if not require_met(sid, st, r, 0)] if c and st["current"] == "OPENING" else []
-        save_state(sid, st)
-        return None
     miss = [] if lifted(st, "claims", task_n) else claim_check(sid, st, msg)
-    if phase == "ACTIVE":
+    if phase in NEGOTIATION and st["current"] == "OPENING" and not lifted(st, "opening"):
+        c = load_contract(sid, st, "OPENING")
+        miss += [f"{r['kind']}: {resolve(r['value'], st['root'])}" for t in c["tasks"] + [c["global"]]
+                 for r in t["require"] if not require_met(sid, st, r, 0)]
+    elif phase == "ACTIVE":
         p = contract_file(sid, st["current"])
         if not os.path.exists(p) or sha(p) != st["hash"]:
             st["phase"] = "FROZEN"

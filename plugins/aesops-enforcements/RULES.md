@@ -12,10 +12,10 @@ Every session starts in **NEGOTIATION** (contract negotiation). Until the owner 
 agent may: read anything (Read tool), list folders read-only (`ls`, `find` without -delete or -exec, `wc`), load
 the opening's skills, and write two files in the session folder: `notes.md` and the work order `proposal.md`.
 - The opening (`salary/opening.md`, or `<root>/.contract/opening.md`, which only the owner writes) names the
-  opening reads: AGENTS, MEMORY, RESUME, PENDING, HANDOFF and the newest Recaps handoff. Documents these point to
-  may be read too. **Project Recon**: an opening may add SCOPE lines for reads outside the project.
-- No stop hooks in the opening or in negotiation (owner, 2026-11-12): unmet opening reads are a reminder in the
-  status bar, never a block.
+  reads that must happen before the first stop: AGENTS, MEMORY, RESUME, PENDING, HANDOFF and the newest Recaps
+  handoff. Documents these point to may be read too. **Project Recon**: an opening may add SCOPE lines for reads
+  outside the project.
+- Unmet opening reads hold the stop.
 
 ## 2. Contracts
 1. The owner gives the order. 2. The agent writes an itemized work order to `proposal.md`. 3. They revise until

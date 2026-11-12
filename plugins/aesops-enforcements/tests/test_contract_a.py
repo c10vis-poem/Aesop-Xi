@@ -126,22 +126,12 @@ def signed():
 
 class Opening(unittest.TestCase):
     def test_newest_handoff_required(self):
-        # the reminder names the newest handoff only; the stop is never blocked in the opening
         s = Session()
-        self.assertEqual(s.stop(), "end")
-        left = " ".join(s.state()["opening_unmet"])
-        self.assertIn(NEW_H, left)
-        self.assertNotIn(OLD_H, left)
+        out = s.stop()
+        self.assertIn(NEW_H, out)
+        self.assertNotIn(OLD_H, out)
         s.open_all()
-        s.stop()
-        self.assertEqual(s.state()["opening_unmet"], [])
-
-    def test_statusline_shows_opening_reminder(self):
-        s = Session()
-        s.stop()
-        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
-        import statusline
-        self.assertIn("opening:", statusline.render({"session_id": s.sid}))
+        self.assertEqual(s.stop(), "end")
 
 
 class SalaryStep(unittest.TestCase):
