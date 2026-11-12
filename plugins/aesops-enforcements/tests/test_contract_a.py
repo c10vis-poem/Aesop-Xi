@@ -387,6 +387,62 @@ class Fingerprint(unittest.TestCase):
         self.assertEqual(s.state()["phase"], "ACTIVE")
 
 
+class Handback(unittest.TestCase):
+    """Contract C: a sub-agent can hand its report back once its sub-contract is met."""
+
+    def test_refused_until_met_then_allowed(self):
+        out_dir = os.path.join(ROOT, "out", "sub")
+        os.makedirs(out_dir, exist_ok=True)
+        prog = os.path.join(out_dir, "progress.md")
+        made = os.path.join(out_dir, "made.md")
+        parent = f"""CONTRACT   type: contract   root: {ROOT}
+AGENT general-purpose model: opus
+SCOPE   Read: *
+SCOPE   Write: {{root}}/out/
+TASK 1  delegate
+  REQUIRE Agent: general-purpose
+"""
+        s = Session()
+        s.open_all()
+        s.propose(parent)
+        self.assertIn("signed", s.prompt("#go"))
+        sub = f"""CONTRACT SUB   type: sub
+SCOPE   Write: {out_dir}
+TASK 1  make the file
+  REQUIRE File: {made}
+  REQUIRE Write-to-task: {prog}
+"""
+        self.assertEqual(s.call("Agent", subagent_type="general-purpose", model="opus",
+                                prompt="do it\n\n" + sub), "allow")
+        C.on_subagent_start(s.base(agent_type="general-purpose", agent_id="ag1"))
+        with open(prog, "w") as f:
+            f.write("## Plan\n- [ ] make it\n## Last action\nnow\n## Findings\n-\n## Blocked\nnone\n")
+        r = s.call("SubagentHandback", agent="ag1", message="done")
+        self.assertIn("not done", r)
+        self.assertIn(made, r)
+        with open(made, "w") as f:
+            f.write("x\n")
+        with open(prog, "w") as f:
+            f.write("## Plan\n- [x] make it\n## Last action\nnow\n## Findings\nmade it\n## Blocked\nnone\n")
+        self.assertEqual(s.call("SubagentHandback", agent="ag1", message="made it"), "allow")
+
+
+class HookSkip(unittest.TestCase):
+    """Contract C: --no-verify / hooksPath are blocked inside git commands only."""
+
+    def test_text_mention_is_not_a_skip(self):
+        s = signed()
+        self.assertEqual(s.call("Bash", command="echo --no-verify"), "allow")
+        self.assertEqual(s.call("Bash", command="echo set hooksPath later"), "allow")
+
+    def test_git_skips_still_blocked(self):
+        s = signed()
+        for cmd in ("git commit --no-verify -m x", "git -c core.hooksPath=/dev/null commit -m x",
+                    "git commit -n -m x", "git commit -an -m x", "git push --no-verify"):
+            self.assertIn("Protected", s.call("Bash", command=cmd), cmd)
+        self.assertNotIn("Protected", s.call("Bash", command="git commit -m 'add -signing'"))
+
+
 class StatusLine(unittest.TestCase):
     def test_statusline_prints(self):
         s = signed()

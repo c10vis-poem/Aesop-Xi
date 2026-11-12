@@ -40,25 +40,9 @@ jobs:
         with:
           submodules: false
 
-      - name: Termux bash shim (hook shebangs) and gitleaks
-        run: |
-          set -euo pipefail
-          sudo mkdir -p /data/data/com.termux/files/usr/bin
-          sudo ln -sf "$(command -v bash)" /data/data/com.termux/files/usr/bin/bash
-          curl -sSL -o /tmp/gl.tgz https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz
-          tar -C /tmp -xzf /tmp/gl.tgz gitleaks && sudo install -m755 /tmp/gitleaks /usr/local/bin/gitleaks
-          gitleaks version
-
-      - name: Run every suite
-        run: |
-          set -uo pipefail
-          cd hooks/tests
-          fail=0
-          for t in *.test.sh test-*.sh; do
-            echo "=================== $t"
-            if ! timeout 300 bash "$t"; then echo "SUITE FAILED: $t"; fail=1; fi
-          done
-          exit $fail
+      - name: Contract enforcement plugin tests
+        # The old hooks/tests folder was removed with the old gates (98e89e6); the rules now live in the plugin.
+        run: python3 -I -m unittest discover -s plugins/aesops-enforcements/tests -v
 
   secret-scan:
     runs-on: ubuntu-latest
