@@ -8,7 +8,7 @@
       "name": "aesops-enforcements",
       "source": "./plugins/aesops-enforcements",
       "description": "Contract enforcement: no work without a signed contract. One gate, one stop gate, one ledger; STEP, SCOPE, REQUIRE and END lines; provable reads. Enabled from settings in every repo and on every device.",
-      "version": "1.0.2"
+      "version": "1.0.3"
     }
   ]
 }

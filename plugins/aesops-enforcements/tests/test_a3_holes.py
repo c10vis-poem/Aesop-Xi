@@ -508,6 +508,144 @@ class PromptShape(unittest.TestCase):
         self.assertNotIn("look at this", json.dumps(e))
 
 
+def post(s, tool, ti, resp=None, error=None):
+    """PostToolUse (or PostToolUseFailure when error is set) for a call already let through by s.call."""
+    d = s.base(tool_name=tool, tool_input=ti)
+    if error is None:
+        d["tool_response"] = resp
+    else:
+        d["error"] = error
+    C.on_posttool(d)
+
+
+SHIP_WORK = f"""CONTRACT   type: contract   root: {PROJ}
+SCOPE Bash: echo
+SCOPE Bash: python3 -I {PROJ}/tests/test_x.py
+SCOPE Write: {PROJ}/docs
+TASK 1  ship
+  REQUIRE File: {{root}}/out/never.md
+"""
+
+
+class JevDigests(unittest.TestCase):
+    """HOLES-B D8: Jev is sent each call's result, not only the call, so a true claim is not judged unproven."""
+
+    def test_result_reaches_jev(self):
+        j = FakeJev("clean")
+        try:
+            s = Session()
+            s.sign(DONE_WORK)
+            cmd = f"python3 -I {PROJ}/tests/test_x.py"
+            self.assertEqual(s.call("Bash", command=cmd), "allow")
+            post(s, "Bash", {"command": cmd}, {"stdout": "Ran 3 tests in 0.1s\n\nOK", "stderr": "",
+                                                "interrupted": False})
+            self.assertEqual(s.call("Bash", command="echo hi"), "allow")
+            post(s, "Bash", {"command": "echo hi"}, error="Exit code 1\nboom")
+            s.stop("Task 1 is done: out/done.md exists; the 3 tests pass.")
+            log = j.body["state"]["tool_log"]
+            self.assertIn("Ran 3 tests in 0.1s OK", log)
+            self.assertIn("FAILED: Exit code 1 boom", log)
+        finally:
+            j.close()
+
+    def test_digest_is_short_and_redacted(self):
+        d = C.result_digest({"stdout": "token=abcdefghijklmnop " + "x" * 5000}, None)
+        self.assertLessEqual(len(d), 260)
+        self.assertNotIn("abcdefghijklmnop", d)
+
+    def test_failure_event_is_wired(self):
+        with open(os.path.join(PLUGIN, "hooks", "hooks.json")) as f:
+            self.assertIn("PostToolUseFailure", json.load(f)["hooks"])
+        with open(os.path.join(PLUGIN, "lib", "hook.py")) as f:
+            self.assertIn('"PostToolUseFailure"', f.read())
+
+
+class PasteNotOwner(unittest.TestCase):
+    """HOLES-B D13: a verb inside text the tools or the agent showed (pasted back) is not the owner's. The real case,
+    2026-11-13 01:12: a pasted refusal ending "the owner signs it with #go." signed contract A4."""
+
+    REFUSAL = ("No signed contract (NEGOTIATION). Allowed: reads, the opening's skills and listing lines, and the work "
+               "order (/x/proposal.md). Write the work order; the owner signs it with #go.")
+
+    def test_pasted_refusal_does_not_sign(self):
+        s = Session()
+        s.opening()
+        w(C.proposal_path(s.sid), DONE_WORK)
+        self.assertNotEqual(s.call("Bash", command="touch /x"), "allow")  # the gate shows the refusal text
+        # the terminal wraps the paste: line breaks and indents land mid-sentence
+        pasted = ("h(https://example.org/docs/c       li)  Error: PreToolUse hook error: No signed\n     contract "
+                  "(NEGOTIATION). Allowed: reads, the opening's\n     skills and listing lines, and the work order "
+                  "(/x/proposal.md).\n        Write the work order; the owner signs it with\n     #go.\nWhat is this?")
+        out = s.prompt(pasted)
+        self.assertNotIn("signed by the owner", out)
+        self.assertEqual(C.load_state(s.sid)["phase"], "NEGOTIATION")
+        self.assertIn("signed by the owner", s.prompt("#go"))
+
+    def test_pasted_agent_text_does_not_push(self):
+        s = Session()
+        s.sign(DONE_WORK)
+        with open(s.tr, "a") as f:
+            f.write(json.dumps({"type": "assistant", "message": {"content": [
+                {"type": "text", "text": "When you are ready, type #push and I send the fixes to GitHub."}]}}) + "\n")
+        s.prompt("he said: When you are ready, type #push and I send")
+        self.assertFalse(C.load_state(s.sid)["push_ok"])
+
+    def test_typed_verbs_still_count(self):
+        self.assertEqual(C.parse_verbs("#go", shown="the owner signs it with #go."), ["go"])
+        self.assertEqual(C.parse_verbs("Yeah, I just need to go aftet i #push", shown="type #push"), ["push"])
+        self.assertEqual(C.parse_verbs("the owner signs it with #go.", shown="the owner signs it with #go."), [])
+
+
+class Notices(unittest.TestCase):
+    """HOLES-B D14: the same contract-state line is not put in the agent's context on every prompt; it stays in the
+    status bar, and comes back to the agent when it changes."""
+
+    def test_state_line_once_until_it_changes(self):
+        s = Session()
+        self.assertIn("Contract state: ACTIVE", s.sign(DONE_WORK))
+        self.assertNotIn("Contract state:", s.prompt("carry on"))
+        self.assertNotIn("Contract state:", s.prompt("carry on"))
+        self.assertIn("push approved", s.prompt("#push"))
+        import statusline
+        self.assertIn("push ok", statusline.render({"session_id": s.sid}))
+
+    def test_after_compaction_it_is_said_again(self):
+        s = Session()
+        s.sign(DONE_WORK)
+        s.prompt("carry on")
+        C.on_start(s.base(source="compact"))
+        self.assertIn("Contract state:", s.prompt("carry on"))
+
+
+class LiveTestRule(unittest.TestCase):
+    """HOLES-B D15: a merge is refused unless this session ran a test after its last change, and the run passed."""
+
+    MERGE = "gh pr merge 5 -R o/r --squash"
+
+    def setUp(self):
+        self.s = Session()
+        self.s.sign(SHIP_WORK)
+        self.s.prompt("#push")
+
+    def test_merge_without_a_run_refused(self):
+        self.assertIn("live run", self.s.call("Bash", command=self.MERGE))
+
+    def test_merge_after_a_passing_run_allowed_and_an_edit_voids_it(self):
+        s = self.s
+        doc = os.path.join(PROJ, "docs", "live.md")
+        self.assertEqual(s.call("Write", file_path=doc, content="x"), "allow")
+        cmd = f"python3 -I {PROJ}/tests/test_x.py"
+        self.assertEqual(s.call("Bash", command=cmd), "allow")
+        post(s, "Bash", {"command": cmd}, error="Exit code 1\nFAILED (failures=1)")
+        self.assertIn("live run", s.call("Bash", command=self.MERGE))
+        self.assertEqual(s.call("Bash", command=cmd), "allow")
+        post(s, "Bash", {"command": cmd}, {"stdout": "Ran 2 tests\n\nOK", "stderr": "", "interrupted": False})
+        self.assertEqual(s.call("Bash", command=self.MERGE), "allow")
+        self.assertEqual(s.call("Write", file_path=doc, content="y"), "allow")
+        self.assertIn("live run", s.call("Bash", command=self.MERGE))
+        self.assertIn("live run", s.call("Bash", command="gh pr merge 5 -R o/r --auto --squash"))
+
+
 if __name__ == "__main__":
     print(f"plugin under test: {PLUGIN}")
     unittest.main(verbosity=1)

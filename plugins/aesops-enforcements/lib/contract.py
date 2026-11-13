@@ -455,23 +455,93 @@ def _owner_text(prompt):
     return re.sub(r"ß(?=(go|ok|redo|push|override|mute|unmute)\b)", "#", t, flags=re.I)
 
 
-def parse_verbs(prompt):
+PASTE_CONTEXT = 16  # non-space characters before a verb that must match shown text for it to count as pasted
+
+
+def _squash(text):
+    return re.sub(r"\s+", "", (text or "").lower())
+
+
+def _pasted(text, start, end, shown):
+    """HOLES-B D13 (2026-11-13): True when the verb at text[start:end] sits inside text the agent or the tools showed
+    (shown, already squashed): the owner pasted it back. A paste reaches the hook as plain text with no marker, and
+    the terminal wraps it with line breaks and indents mid-sentence, so the match ignores every space and break.
+    A verb with fewer than PASTE_CONTEXT characters before it on the owner's side is typed, never pasted."""
+    if not shown:
+        return False
+    before = _squash(text[:start])
+    if len(before) < PASTE_CONTEXT:
+        return False
+    return (before[-PASTE_CONTEXT:] + _squash(text[start:end])) in shown
+
+
+def parse_verbs(prompt, shown=""):
+    """The owner's verbs in a prompt. shown: what the agent and the tools showed (see _shown_text); a verb inside it
+    is pasted, not the owner's."""
+    shown = _squash(shown)
     found = []
-    for sentence in re.split(r"[.!?;\n]+", _owner_text(prompt).lower()):
-        for verb, pat in VERBS:
-            m = re.search(pat, sentence)
-            if m and not NEG.search(sentence[:m.start()]) and verb not in found:
+    text = _owner_text(prompt).lower()
+    for verb, pat in VERBS:
+        for m in re.finditer(pat, text):
+            sentence_start = max((x.end() for x in re.finditer(r"[.!?;\n]", text[:m.start()])), default=0)
+            if NEG.search(text[sentence_start:m.start()]) or _pasted(text, m.start(), m.end(), shown):
+                continue
+            if verb not in found:
                 found.append(verb)
-    return found
+            break
+    return [v for v, _ in VERBS if v in found]
 
 
-def parse_overrides(prompt):
+def _shown_text(sid, transcript):
+    """What the owner saw on screen and could paste back, squashed: every refusal these hooks gave, and the tail of
+    the session transcript except the owner's own typed prompts (the agent's text, tool results, hook messages)."""
+    parts = [e.get("reason", "") for e in ledger(sid)[-400:] if e.get("kind") in ("deny", "said")]
+    try:
+        with open(transcript, "rb") as f:
+            f.seek(0, 2)
+            start = max(0, f.tell() - 400_000)
+            f.seek(start)
+            tail = f.read().decode("utf-8", "replace").split("\n")
+            if start:
+                tail = tail[1:]  # the first line was cut by the seek
+    except (OSError, TypeError):
+        tail = []
+
+    def strings(x):
+        if isinstance(x, str):
+            yield x
+        elif isinstance(x, dict):
+            for v in x.values():
+                yield from strings(v)
+        elif isinstance(x, list):
+            for v in x:
+                yield from strings(v)
+
+    for line in tail:
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        msg = e.get("message") if isinstance(e, dict) else None
+        if e.get("type") == "user" and isinstance(msg, dict) and isinstance(msg.get("content"), str):
+            continue  # the owner's own typed prompt
+        parts.extend(strings(msg if msg is not None else e))
+    return _squash("\n".join(parts))
+
+
+def parse_overrides(prompt, shown=""):
     """Owner-only: `#override [turn|task|session]`, `#mute <gate> [turn|task|session]`, `#unmute <gate|all>`.
-    Returns a list of (action, gate, scope). Default scope: turn. Protection is never a gate."""
+    Returns a list of (action, gate, scope). Default scope: turn. Protection is never a gate. A pasted one (shown
+    text) never counts."""
     out = []
-    for sentence in re.split(r"[.!?;\n]+", _owner_text(prompt).lower()):
+    text = _owner_text(prompt).lower()
+    shown = _squash(shown)
+    pos = 0
+    for sentence in re.split(r"([.!?;\n]+)", text):
+        base, pos = pos, pos + len(sentence)
         for m in re.finditer(r"#(override|mute|unmute)\b((?:\s+[\w-]+){0,2})", sentence):
-            if NEG.search(sentence[:m.start()]):
+            if NEG.search(sentence[:m.start()]) or _pasted(text, base + m.start(), base + m.start() + len(m.group(1)) + 1,
+                                                          shown):
                 continue
             words = m.group(2).split()
             act = m.group(1)
@@ -519,9 +589,15 @@ def next_letter(st):
 def on_prompt(inp):
     sid = inp.get("session_id", "")
     st = ensure(sid, inp.get("cwd"))
-    verbs = parse_verbs(inp.get("prompt", ""))
-    notes = []
     raw = inp.get("prompt", "") or ""
+    shown = _shown_text(sid, inp.get("transcript_path")) if "#" in raw or "ß" in raw else ""
+    verbs = parse_verbs(raw, shown)
+    pasted = [v for v in parse_verbs(raw) if v not in verbs]
+    notes = []
+    if pasted:
+        log(sid, kind="pasted-verb", verbs=pasted)
+        notes.append("Not counted as the owner's: " + ", ".join("#" + v for v in pasted) + " inside pasted text "
+                     "(it matches what the tools or the agent showed). The owner types it on its own to use it.")
     # A3 3c: how a paste reaches the hook (to tell a pasted #push from a typed one). Shape only, never the text.
     log(sid, kind="prompt-shape", chars=len(raw), lines=raw.count("\n") + 1, verbs=verbs,
         markers=sorted({m.group(0)[:40] for m in re.finditer(r"<pasted[^>]{0,20}>|\[Pasted text[^\]]{0,20}\]|"
@@ -535,7 +611,7 @@ def on_prompt(inp):
     st["turn_start"] = now()
     task_n = _task_number(sid, st)
     _expire_overrides(st, task_n)
-    for act, gate, scope in parse_overrides(inp.get("prompt", "")):
+    for act, gate, scope in parse_overrides(raw, shown):
         log(sid, kind="override", action=act, gate=gate, scope=scope)
         if act == "unmute":
             st["overrides"] = [o for o in st["overrides"] if gate != "all" and o["gate"] != gate]
@@ -569,8 +645,13 @@ def on_prompt(inp):
     if warned:
         notes.append("Protected files changed outside git (not paused, warned once): " + ", ".join(warned[:10]))
     fp_save(sid)  # takes in what this prompt itself wrote (a signed contract, its owner copy)
+    # HOLES-B D14: the state line goes to the agent only when it changed; it is always in the status bar
+    # (lib/statusline.py). A compaction clears last_status, so the agent hears it again after one.
+    line = status_line(sid, st)
+    if line != st.get("last_status"):
+        notes.append(line)
+        st["last_status"] = line
     save_state(sid, st)
-    notes.append(status_line(sid, st))
     return {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
                                    "additionalContext": "\n".join(n for n in notes if n)}}
 
@@ -688,6 +769,7 @@ def on_start(inp):
     st = load_state(sid)
     if inp.get("source") == "compact" and st:
         st["compact_at"] = now()
+        st.pop("last_status", None)  # D14: the agent's context was emptied, so the state line is said again
         save_state(sid, st)
         log(sid, kind="compact")
         return {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext":
@@ -1187,6 +1269,12 @@ def on_pretool(inp):
                      "#ok or #redo. Reads only until then.", count=False)
     if tool in FREE_TOOLS:
         return None
+    # before #push the GitHub protocol's hold refuses a merge with its own reason; after it, the live-run rule
+    if tool == "Bash" and st.get("push_ok") and MERGE_RE.search(canonical_bash(ti.get("command", ""))):
+        why = live_run_missing(sid)
+        if why:
+            return _deny(sid, st, tool, ti, agent, f"No merge without a live run (owner, 2026-11-12 22:47): {why}. "
+                         "Run the changed code's tests in this session, then merge.", count=False)
     reading = tool in ("Read", "Grep", "Glob") or (
         tool == "Bash" and READONLY_BASH.match(ti.get("command", "").strip())
         and not shell_ops(ti.get("command", "")) and not RECON_UNSAFE.search(ti.get("command", "")))
@@ -1256,6 +1344,24 @@ def on_pretool(inp):
         return _deny(sid, st, tool, ti, agent, f"Hard limit: {hit}. No more calls; write the closing report and "
                      "name everything not done.", count=False)
     return _contract_gate(sid, st, c, inp, tool, ti, st["current"], st["signed_at"], agent)
+
+
+MERGE_RE = re.compile(r"(?:^|\s)gh\s+pr\s+merge\b")
+
+
+def live_run_missing(sid):
+    """HOLES-B D15: why a merge may not run yet, or "" when it may. The owner's rule (2026-11-12 22:47): no code is
+    pushed that was not tested in a live session. Met when, in this session, a test run (TEST_RUN) came after the
+    last Write or Edit and the newest such run passed (its PostToolUse result, not a PostToolUseFailure)."""
+    led = [e for e in ledger(sid) if e.get("agent") is None]
+    last_edit = max((e["t"] for e in led if e.get("kind") == "call" and e.get("tool") in WRITE_TOOLS), default=0)
+    runs = [e for e in led if e.get("kind") == "result" and e.get("tool") == "Bash" and e.get("t", 0) >= last_edit
+            and TEST_RUN.search(str(e.get("key", "")))]
+    if not runs:
+        return "no test run in this session since the last change"
+    if not runs[-1].get("ok"):
+        return f"the newest test run since the last change failed ({runs[-1].get('key', '')[:80]})"
+    return ""
 
 
 def _salary_step(sid, st, tool, inp, agent):
@@ -1531,7 +1637,35 @@ def on_posttool(inp):
     elif tool in ("Agent", "Task"):
         log(sid, kind="agent", type=ti.get("subagent_type", "general-purpose"), agent=agent,
             agent_id=(tr or {}).get("agentId") if isinstance(tr, dict) else None)
+    if tool != "Read" or inp.get("error") is not None:
+        # HOLES-B D8: what the call returned, short and redacted, so the Jev audit sees results, not only calls.
+        # PostToolUseFailure comes here too, with "error" in place of "tool_response".
+        log(sid, kind="result", tool=tool, key=primary(tool, ti)[:150], agent=agent,
+            ok=inp.get("error") is None, digest=result_digest(tr, inp.get("error")))
     return None
+
+
+def result_digest(tr, error=None):
+    """One short line for what a call returned: stdout and stderr for Bash, else the response's text."""
+    if error is not None:
+        text = "FAILED: " + str(error)
+    elif isinstance(tr, dict) and ("stdout" in tr or "stderr" in tr):
+        text = " ".join(str(tr.get(k) or "") for k in ("stdout", "stderr")) + (" [interrupted]" if tr.get(
+            "interrupted") else "")
+    elif isinstance(tr, str):
+        text = tr
+    else:
+        try:
+            text = json.dumps(tr, default=str)
+        except (TypeError, ValueError):
+            text = str(tr)
+    text = " ".join(text.split())
+    try:
+        import jev_audit
+        text = jev_audit.SECRET.sub("[REDACTED]", text)
+    except Exception:
+        text = "[result hidden: the redactor could not load]"
+    return text if len(text) <= 240 else text[:160] + " ... " + text[-75:]
 
 
 def read_proof(ti, tr):
@@ -1799,13 +1933,15 @@ def _jev_stop(sid, st, msg, since):
     except Exception:
         return ["the Jev audit could not load (lib/jev_audit.py): the stop is held"]
     lines = []
-    for e in ledger(sid)[-300:]:
+    for e in ledger(sid)[-600:]:  # 600: a result line now follows each call
         if e.get("t", 0) < since or e.get("agent") is not None:
             continue
         if e.get("kind") == "read":
             lines.append(f"Read {e.get('path')}")
         elif e.get("kind") in ("call", "deny"):
             lines.append(f"{'REFUSED ' if e['kind'] == 'deny' else ''}{e.get('tool')} {str(e.get('key', ''))[:150]}")
+        elif e.get("kind") == "result":  # HOLES-B D8: the call's result, under the call
+            lines.append(f"  result: {e.get('digest', '')}")
     r = jev_audit.audit(msg, "\n".join(lines))
     log(sid, kind="jev-audit", state=r["state"], block=r["block"], warn=r["warn"], why=r["why"])
     if r["state"] == "off":

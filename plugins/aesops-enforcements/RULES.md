@@ -27,7 +27,8 @@ checked every turn; the owner gets a view-only copy in `NvAEx-Recaps/contracts/<
 - **Only the owner marks anything done.** When every line is met the agent is told once; the contract stays ACTIVE
   and nothing is locked until the owner's `#ok` (or `#redo`).
 - **No code is pushed that was not tested in a live session** (owner, 2026-11-12): tests first, then the change run
-  live in a session (a real stop, prompt, tool call), then `#push`.
+  live in a session (a real stop, prompt, tool call), then `#push`. A merge (`gh pr merge`, `--auto` too) is
+  refused until this session holds a test run after its last Write or Edit, and the newest such run passed.
 - Kinds: **contract** (planned work), **freelance** (unplanned work, signed with `#go`), **salary** (pre-signed
   protocols in `salary/`, listed in `salary/ACTIVE`: GitHub).
 - **Fix on the spot**: anything stale, contradicting or broken the agent comes across becomes a freelance work
@@ -67,7 +68,8 @@ every line is met the contract waits for `#ok` or `#redo`.
   the agent's message and its tool log: a claim the log does not show, a file's content stated as fact with the file
   never read, work skipped or put off. Yes (0.70 or more): the stop is held, naming the check. Unsure (0.30 to
   0.70): the owner is warned on screen. A key is set but Jev gives no answer: the stop is held. No key: the owner is
-  told once that the audit is off. Jev judges; the code decides.
+  told once that the audit is off. Jev judges; the code decides. The tool log holds each call and, under it, a
+  short redacted line of what it returned (failures marked `FAILED`), so a true claim is not judged unproven.
 
 ## 5. Reads are proven
 - A line counts as read when its current text came back from a Read (line hash): an edit voids only the lines it
@@ -90,7 +92,9 @@ closing turn that names everything not done.
 
 ## 7. The owner's verbs
 Counted anywhere in a message the owner types; a negation in the same sentence cancels; pasted content and
-sub-agent hand-backs never count.
+sub-agent hand-backs never count. A paste reaches the hook as plain text, so a verb counts as pasted when the 16
+characters before it, with it, match what the tools or the agent showed (refusals, tool results, the agent's
+text; spaces and line breaks ignored). The owner is told; he types the verb on its own to use it.
 
 | Verb | Does |
 |---|---|
@@ -125,4 +129,5 @@ auto-merge on green CI; GitHub deletes the branch on merge.
 
 ## Status bar
 `lib/statusline.py` shows contract, phase, task, unmet lines, breaches, push and overrides, at no token cost.
+The contract-state line goes into the agent's context only when it changes (and again after a compaction).
 Settings: `{"statusLine": {"type": "command", "command": "python3 -I <plugin>/lib/statusline.py"}}`.
