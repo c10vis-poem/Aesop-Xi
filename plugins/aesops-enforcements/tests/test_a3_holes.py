@@ -346,6 +346,32 @@ TASK 1  report
         finally:
             j.close()
 
+    def test_flip_flopping_verdict_does_not_loop(self):
+        """Jev says yes, then no, then yes: the contract's own lines are unchanged, so it blocks once."""
+        j = FakeJev("block")
+        try:
+            s = Session()
+            s.sign(DONE_WORK)
+            self.assertIn("Jev:", s.stop("Task 1 is done."))
+            j.mode = "clean"
+            self.assertTrue(s.stop("Task 1 is done.").startswith("end"))
+            j.mode = "block"
+            self.assertTrue(s.stop("Task 1 is done.").startswith("end"), "the flip back blocked again")
+        finally:
+            j.close()
+
+    def test_question_to_owner_not_audited(self):
+        self.assertTrue(C._asks_owner("Here is what I found.\n- **1.** do it\n- **2.** wait\n- **3.** other"))
+        self.assertTrue(C._asks_owner("Which one do you want?"))
+        self.assertFalse(C._asks_owner("Task 1 is done."))
+        j = FakeJev("block")
+        try:
+            s = Session()
+            s.sign(DONE_WORK)
+            self.assertNotIn("Jev:", s.stop("I need your call first. Which one do you want?"))
+        finally:
+            j.close()
+
     def test_key_not_sent_in_output(self):
         out, _ = self.run_stop("block")
         self.assertNotIn("fake-test-key", out)

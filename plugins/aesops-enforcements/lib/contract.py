@@ -1780,6 +1780,12 @@ def deferrals(msg):
     return out
 
 
+def _asks_owner(msg):
+    """True when the message ends by asking the owner (a question, or a numbered choice list)."""
+    tail = [x.strip() for x in (msg or "").strip().split("\n") if x.strip()][-4:]
+    return bool(tail) and (tail[-1].endswith("?") or any(re.match(r"^[-*]?\s*\**\s*[1-9][.)]", x) for x in tail))
+
+
 JEV_NAMES = {"claims_unproven": "a claim the tool log does not show",
              "content_as_fact": "a file's content stated as fact, the file never read",
              "work_put_off": "work skipped or put off"}
@@ -1889,7 +1895,9 @@ def _on_stop(inp):
                        "report them to the owner")
         for ph in deferrals(msg):  # A3 3f: nothing skipped, nothing put off
             due.append(f"your message puts work off (\"{ph}\"): do it now, or ask the owner to strike it")
-        if msg.strip() and not lifted(st, "stop", i + 1):  # decision 2: Jev judges, the code decides
+        # decision 2: Jev judges, the code decides. A message that waits on the owner's answer (it ends asking him)
+        # is not work put off: Jev is not asked about it, or its flip-flopping verdict loops the stop (2026-11-12).
+        if msg.strip() and not lifted(st, "stop", i + 1) and not _asks_owner(msg):
             due += _jev_stop(sid, st, msg, since)
         all_met = not due and i == len(c["tasks"]) - 1 and not task_open(sid, st, t, st["current"], since)
         if lifted(st, "stop", i + 1):
@@ -1914,15 +1922,18 @@ def _on_stop(inp):
         st["last_block"] = None
         save_state(sid, st)
         return {"systemMessage": " ".join(warn)} if warn else None
-    sig = sorted(miss)
-    # The same unmet list is named once. It used to compare the ledger length too, and every tool call adds a ledger
-    # line, so the same block came back after every turn (2026-11-12). Only a changed list blocks again.
+    # The same unmet list is named once. Compared on the contract's own lines only: Jev's verdict and the
+    # per-message checks change with every reply, and comparing them made the stop flip back and forth forever
+    # (2026-11-12). Those per-message items go to the owner's screen instead when the lines are unchanged.
+    per_msg = ("Jev:", "your message puts work off", "call(s) refused")
+    sig = sorted(m for m in miss if not any(m.startswith(p) or p in m for p in per_msg))
     if st.get("last_block") == sig:
         st["stopped_unmet"] = miss
         log(sid, kind="stopped-unmet", missing=miss)
         save_state(sid, st)
-        # nothing changed since the last block: end the turn and report it to the owner
-        return {"systemMessage": " ".join(warn)} if warn else None
+        extra = [m for m in miss if m not in sig]
+        shown = (warn or []) + (["Not blocked again, for the owner to see: " + "; ".join(extra)] if extra else [])
+        return {"systemMessage": " ".join(shown)} if shown else None
     st["last_block"] = sig
     save_state(sid, st)
     shown = miss[:12] + ([f"... and {len(miss) - 12} more (status bar)"] if len(miss) > 12 else [])
