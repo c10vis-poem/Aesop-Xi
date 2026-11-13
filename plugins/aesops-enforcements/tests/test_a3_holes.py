@@ -329,6 +329,57 @@ TASK 1  report
         self.assertNotIn("fake-test-key", out)
 
 
+class ChecksOnlyAtTheStop(unittest.TestCase):
+    """Every Check ran on every prompt and tool call; four slow ones took the prompt hook past 20 s and the owner's
+    prompt was lost. Checks now run at the stop only; prompts and tool calls reuse the last result."""
+
+    def test_slow_check_not_run_on_prompt_or_call(self):
+        import time
+        s = Session()
+        s.sign(f"""CONTRACT   type: contract   root: {PROJ}
+SCOPE Bash: echo
+TASK 1  slow
+  REQUIRE Check: sleep 3
+TASK 2  next
+  REQUIRE File: {{root}}/out/never.md
+""")
+        t0 = time.time()
+        s.prompt("hello")
+        s.call("Bash", command="echo hi")
+        self.assertLess(time.time() - t0, 2.5, "a Check ran during a prompt or a tool call")
+        t0 = time.time()
+        out = s.stop()
+        self.assertGreaterEqual(time.time() - t0, 3, "the stop did not run the Check")
+        self.assertIn("task 2", out)  # the Check passed at the stop, so task 1 closed
+        t0 = time.time()
+        self.assertIn("task 2", s.prompt("next"))
+        self.assertLess(time.time() - t0, 2.5)
+
+
+class ClosedTasksStayClosed(unittest.TestCase):
+    """A closed task's Check runs once, at the stop that closes it, and never again (owner, 2026-11-12)."""
+
+    def test_check_runs_once(self):
+        counter = os.path.join(TMP, "check-runs.txt")
+        open(counter, "w").close()
+        s = Session()
+        s.sign(f"""CONTRACT   type: contract   root: {PROJ}
+SCOPE Bash: echo
+TASK 1  counted
+  REQUIRE Check: echo run >> {counter}
+TASK 2  next
+  REQUIRE File: {{root}}/out/never.md
+""")
+        s.stop()  # runs the Check, closes task 1
+        s.prompt("go on")
+        s.call("Bash", command="echo hi")
+        s.stop("still on task 2")
+        s.stop("again")
+        with open(counter) as f:
+            self.assertEqual(f.read().count("run"), 1, "a closed task's Check ran again")
+        self.assertIn(1, C.load_state(s.sid)["closed"]["A"])
+
+
 class PromptShape(unittest.TestCase):
     """3c: the shape of each prompt is logged (never its text), to tell a paste from typing."""
 

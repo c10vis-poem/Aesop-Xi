@@ -972,10 +972,25 @@ def require_met(sid, st, r, since, agent=None):
     if kind == "File":
         return os.path.exists(norm(val, root))
     if kind == "Check":
-        return run_check(val, root)
+        return _check(st, val, root)
     if kind == "Write-to-task":
         return progress_ok(norm(val, root))[0]
     return False
+
+
+CHECKS_LIVE = False  # True only inside the stop gate (2026-11-12)
+_RAN_THIS_STOP = set()  # each Check command runs at most once per stop
+
+
+def _check(st, cmd, root):
+    """A Check command runs only at the stop, where the decision is made. Prompts and tool calls reuse the last
+    stop's result: running every Check on every hook call took longer than the 20 s hook limit, the prompt hook was
+    killed and the owner's prompt (with any #push in it) was lost."""
+    cache = st.setdefault("check_cache", {})
+    if CHECKS_LIVE and cmd not in _RAN_THIS_STOP:
+        _RAN_THIS_STOP.add(cmd)
+        cache[cmd] = run_check(cmd, root)
+    return cache.get(cmd, False)
 
 
 def run_check(cmd, root):
@@ -1001,10 +1016,23 @@ def task_open(sid, st, task, label, since, agent=None):
 
 
 def current_task(sid, st, c, label, since, agent=None):
+    """The first task with an unmet line. A task closed at a stop stays closed: its lines (and Check commands) are
+    never evaluated again in this contract (owner, 2026-11-12)."""
+    closed = set(st.get("closed", {}).get(label, [])) if agent is None else set()
     for i, t in enumerate(c["tasks"]):
+        if t["n"] in closed and i != len(c["tasks"]) - 1:
+            continue
         if i == len(c["tasks"]) - 1 or task_open(sid, st, t, label, since, agent):
             return i, t
     return len(c["tasks"]) - 1, c["tasks"][-1]
+
+
+def _close_tasks(st, c, label, upto):
+    """Record tasks[:upto] as closed for this contract (called at the stop, where the lines were just checked)."""
+    done = st.setdefault("closed", {}).setdefault(label, [])
+    for t in c["tasks"][:upto]:
+        if t["n"] not in done:
+            done.append(t["n"])
 
 
 def limits(sid, st, c, transcript):
@@ -1729,6 +1757,16 @@ def block(reason, event="Stop"):
 
 
 def on_stop(inp):
+    global CHECKS_LIVE
+    CHECKS_LIVE = True
+    _RAN_THIS_STOP.clear()
+    try:
+        return _on_stop(inp)
+    finally:
+        CHECKS_LIVE = False
+
+
+def _on_stop(inp):
     sid = inp.get("session_id", "")
     st = load_state(sid)
     if st is None:
@@ -1766,6 +1804,7 @@ def on_stop(inp):
         # grade a pending quiz answer first, so a pass counts in this same stop
         q = None if lifted(st, "quiz", i + 1) else quote_check(sid, st, c, msg, since)
         i, t = current_task(sid, st, c, st["current"], since)
+        _close_tasks(st, c, st["current"], i)  # every task before the current one is met: closed for good
         due = [f"task {t['n']}: {m}" for m in task_open(sid, st, t, st["current"], since)]
         upto = dict(c, tasks=c["tasks"][:i + 1])
         due += goals_missing(sid, st, upto, since)
@@ -1813,6 +1852,16 @@ def on_stop(inp):
 
 
 def on_subagent_stop(inp):
+    global CHECKS_LIVE
+    CHECKS_LIVE = True  # a sub-agent's stop decides too: its Checks run here
+    _RAN_THIS_STOP.clear()
+    try:
+        return _on_subagent_stop(inp)
+    finally:
+        CHECKS_LIVE = False
+
+
+def _on_subagent_stop(inp):
     sid = inp.get("session_id", "")
     st = load_state(sid)
     agent = inp.get("agent_id")
