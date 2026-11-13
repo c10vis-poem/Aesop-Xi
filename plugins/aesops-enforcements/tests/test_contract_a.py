@@ -233,9 +233,11 @@ class Salary(unittest.TestCase):
 class Protection(unittest.TestCase):
     def test_path_tricks(self):
         s = signed()
-        for cmd in ("ls $HOME/.claude/state", "ls ${HOME}/.claude/state",
-                    f"ls {HOME}/.claude/../.claude/state", "wc ~/.claude/./state/x"):
+        # reads are never blocked (owner, 2026-11-12 21:03): the tricks are tested on writes, where they matter
+        for cmd in ("touch $HOME/.claude/state/x", "touch ${HOME}/.claude/state/x",
+                    f"touch {HOME}/.claude/../.claude/state/x", "rm ~/.claude/./state/x"):
             self.assertIn("Protected", s.call("Bash", command=cmd), cmd)
+        self.assertEqual(s.call("Bash", command="ls $HOME/.claude/state"), "allow")
 
 
 class ReadProof(unittest.TestCase):
@@ -310,19 +312,27 @@ TASK 1  read and prove it
             s = self.quiz_session()
             out = s.stop()
             self.assertIn("quiz: quote lines", out)
-            n = len(s.state()["quote"]["lines"])
+            n = len(s.state()["quote"]["nums"])
             self.assertTrue(C.QUIZ_MIN <= n <= C.QUIZ_MAX, n)
+
+    @staticmethod
+    def answer(q):
+        # state.json holds only line numbers and fingerprints (2026-11-12): the answer comes from the file itself
+        with open(DOC) as f:
+            lines = f.read().split("\n")
+        return "\n".join(lines[n - 1] for n in q["nums"])
 
     def test_pass_and_taint(self):
         s = self.quiz_session()
         s.stop()
         q = s.state()["quote"]
-        self.assertEqual(s.stop(msg="\n".join(q["lines"])), "end")
+        self.assertNotIn("lines", q)
+        self.assertEqual(s.stop(msg=self.answer(q)), "end")
         s2 = self.quiz_session()
         s2.stop()
         q2 = s2.state()["quote"]
         s2.read(DOC)  # opening the file while the quiz is pending
-        self.assertIn("opened while the quiz was pending", s2.stop(msg="\n".join(q2["lines"])))
+        self.assertIn("opened while the quiz was pending", s2.stop(msg=self.answer(q2)))
 
 
 class StopGate(unittest.TestCase):

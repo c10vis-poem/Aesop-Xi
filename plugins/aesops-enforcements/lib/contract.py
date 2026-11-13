@@ -33,7 +33,30 @@ NEGOTIATION = {"NEGOTIATION", "OPENING", "IDLE"}
 GATES = {"scope", "stop", "claims", "quiz", "opening"}
 QUIZ_MIN, QUIZ_MAX = 3, 8
 RECON_UNSAFE = re.compile(r"\s-(delete|exec|execdir|ok|okdir|fprint|fprintf|fls)\b")
-READONLY_BASH = re.compile(r"^(ls|find|wc|grep|stat|diff|cmp|du|file)\s")
+READONLY_BASH = re.compile(r"^(ls|find|wc|grep|stat|diff|cmp|du|file|cat|head|tail|nl)\s")
+
+
+def shell_ops(cmd):
+    """True when the command chains, pipes or redirects. Operators inside quotes are text (a commit message, a regex)
+    and do not count; `$(` and backticks count outside single quotes, because they run inside double quotes too
+    (2026-11-12: a quoted `<email>` or `|` in a pattern used to refuse the whole command)."""
+    sq = dq = False
+    i, n = 0, len(cmd or "")
+    while i < n:
+        ch = cmd[i]
+        if ch == "\\" and not sq:
+            i += 2
+            continue
+        if ch == "'" and not dq:
+            sq = not sq
+        elif ch == '"' and not sq:
+            dq = not dq
+        elif not sq and (ch == "`" or cmd.startswith("$(", i)):
+            return True
+        elif not sq and not dq and (ch in ";|&<>\n"):
+            return True
+        i += 1
+    return sq or dq  # an unclosed quote hides what follows: refuse
 RNG = random.SystemRandom()
 
 
@@ -253,7 +276,7 @@ def parse(text, root=None):
     if not c["tasks"]:
         c["tasks"] = [c["global"]]
         c["global"] = _task(0, "all tasks")
-    for t in c["tasks"][:-1]:
+    for t in c["tasks"]:  # every task, the last one too: an empty last task used to sign and count as met
         if not t["step"] and not t["require"]:
             errs.append(f"TASK {t['n']} ({t['title']}) has no STEP or REQUIRE, so it can never close")
     return c, errs
@@ -427,7 +450,9 @@ SCOPES = ("turn", "task", "session")
 
 
 def _owner_text(prompt):
-    return re.sub(r"<pasted_content[^>]*>.*?</pasted_content>", " ", prompt or "", flags=re.S | re.I)
+    t = re.sub(r"<pasted_content[^>]*>.*?</pasted_content>", " ", prompt or "", flags=re.S | re.I)
+    # the phone keyboard can turn # into ß: "ßredo" is the owner's #redo (2026-11-12)
+    return re.sub(r"ß(?=(go|ok|redo|push|override|mute|unmute)\b)", "#", t, flags=re.I)
 
 
 def parse_verbs(prompt):
@@ -535,7 +560,7 @@ def on_prompt(inp):
         notes.append(f"Contract {st['current']} sent back by the owner (#redo). Write the revised work order to "
                      f"{proposal_path(sid)}; when signed it becomes the next numbered run of {letter}.")
     if "go" in verbs:
-        notes.append(_sign(sid, st))
+        notes.append(_sign(sid, st, inp.get("prompt", "")))
     if "push" in verbs:
         st["push_ok"] = True
         notes.append("The owner approved the push (#push): lines held 'after: #push' are now open.")
@@ -550,15 +575,25 @@ def on_prompt(inp):
                                    "additionalContext": "\n".join(n for n in notes if n)}}
 
 
-def _sign(sid, st):
+END_WORDS = re.compile(r"\b(end|limit|deadline|minutes?|hours?|\d+\s*(?:m|min|h))\b", re.I)
+
+
+def _sign(sid, st, prompt=""):
     pp = proposal_path(sid)
     if not os.path.isfile(pp):
         return f"#go received, but there is no work order at {pp} to sign. Nothing was signed."
     with open(pp) as f:
         text = f.read()
+    notes = []
+    # Only the owner adds END lines (owner, 2026-11-12): kept only when his #go message names a limit.
+    if re.search(r"(?m)^\s*END\s", text) and not END_WORDS.search(_owner_text(prompt)):
+        text = re.sub(r"(?m)^\s*END\s.*\n?", "", text)
+        notes.append("END lines removed: only the owner sets an end or a limit, and his #go named none.")
     c, errs = parse(text, st["root"])
+    # The owner's #go signs (owner, 2026-11-12 21:00): a format error is the agent's to fix, not a refusal.
     if errs:
-        return "#go received, but the work order did not pass the format check, so nothing was signed:\n- " + "\n- ".join(errs)
+        notes.append("Signed with format errors (lines that cannot match are ignored; fix them in a revised "
+                     "order):\n- " + "\n- ".join(errs))
     if st["redo"]:
         L = st["redo"]
         info = st["letters"][L]
@@ -576,9 +611,20 @@ def _sign(sid, st):
     p = open_contract(sid, st, label, text)
     os.remove(pp)
     st["phase"] = "ACTIVE"
+    # A STEP that protection would refuse can never run: flag it now and drop it from the task, instead of a
+    # deadlock where one hook requires the step and another forbids it (2026-11-12, session a96eac98).
+    void = []
+    for t in c["tasks"] + [c["global"]]:
+        for s in t["step"]:
+            ti = {"command": s["value"]} if s["kind"] == "Bash" else {PATH_TOOLS.get(s["kind"], "file_path"): s["value"]}
+            why = protection(sid, s["kind"], ti)
+            if why:
+                void.append(s["id"])
+                notes.append(f"STEP {s['kind']}: {s['value'][:80]} can never run ({why[:90]}): dropped from its task.")
+    st.setdefault("void_steps", {})[label] = void
     copy = owner_copy(sid, label, p)
     return (f"Contract {label} signed by the owner (#go). sha256 {st['hash'][:16]}. "
-            f"State copy {p} (read-only); owner copy {copy}. {summary(c)}")
+            f"State copy {p} (read-only); owner copy {copy}. {summary(c)}" + ("\n" + "\n".join(notes) if notes else ""))
 
 
 def _rename_run(sid, old, new):
@@ -736,25 +782,23 @@ def protection(sid, tool, ti):
         p = norm(ti.get("file_path", ""))
         if SECRET_FILE.search(p):
             return f"Protected: {p} looks like a secret file. Reading it would put the secret in the transcript."
-        # The enforcement state (state.json holds a pending quiz's answer lines, the ledger, other sessions) is not
-        # read; this session's notes, work order and signed contract copies are (2026-11-12).
-        if under(p, STATE) and p not in allowed_writes and not under(p, os.path.join(sdir(sid), "contracts")):
-            return f"Protected: {p} is enforcement state. Your notes, work order and signed contracts can be read."
+        # No read is blocked (owner, 2026-11-12 21:03), the enforcement state included: the quiz keeps only
+        # fingerprints of its lines in state.json, so reading it gives nothing away. Secret files stay closed.
     if tool == "Bash" or tool.startswith("mcp__"):
         cmd = ti.get("command", "") if tool == "Bash" else json.dumps(ti)
         if SECRET_BASH.search(cmd):
             return "Protected: this command prints secrets or skips or reroutes git hooks."
-        # Read-only listing and searching (ls, find without -delete/-exec, wc, grep, stat, diff ...) may look at
-        # protected folders, as the Read tool may: no shell operators, so nothing can be written (2026-11-12).
-        readonly = (tool == "Bash" and READONLY_BASH.match(cmd.strip()) and not SHELL_OPS.search(cmd)
+        # Read-only listing, searching and printing (ls, find without -delete/-exec, wc, grep, cat, head ...) may
+        # look anywhere a Read may: no shell operators, so nothing can be written (2026-11-12).
+        readonly = (tool == "Bash" and READONLY_BASH.match(cmd.strip()) and not shell_ops(cmd)
                     and not RECON_UNSAFE.search(cmd))
         for d in protected_paths(sid):
-            if readonly and d != STATE:
-                continue  # read-only may look at the plugin and owner copies, never at the enforcement state
+            if readonly:
+                continue
             if d in cmd or d.replace(HOME, "~") in cmd:
                 return f"Protected: the command touches {d.replace(HOME, '~')}. Use the Read tool to look; only the owner changes it."
         for p in _cmd_paths(cmd):
-            if readonly and not under(p, STATE):
+            if readonly:
                 continue
             if _protected_hit(sid, p):
                 return f"Protected: the command touches {p.replace(HOME, '~')}. Use the Read tool to look; only the owner changes it."
@@ -886,7 +930,7 @@ def line_matches(tool, inp, item, root, exact):
     if tool == "Bash":
         if exact:
             return key == val
-        return (key == val or key.startswith(val + " ")) and not SHELL_OPS.search(key)
+        return (key == val or key.startswith(val + " ")) and not shell_ops(key)
     if tool.startswith("mcp__") and exact:
         try:
             return json.loads(val) == inp.get("tool_input", {})
@@ -1003,7 +1047,8 @@ def run_check(cmd, root):
 def task_open(sid, st, task, label, since, agent=None):
     """A task is closed when all its REQUIRE lines are met and all its STEP lines were used."""
     used = used_steps(sid, label)
-    missing = [f"STEP {s['kind']}: {s['value']}" for s in task["step"] if s["id"] not in used]
+    void = set(st.get("void_steps", {}).get(label, []))  # steps flagged at signing as never runnable
+    missing = [f"STEP {s['kind']}: {s['value']}" for s in task["step"] if s["id"] not in used and s["id"] not in void]
     missing += [f"REQUIRE {r['kind']}: {r['value']}" for r in task["require"]
                 if r["kind"] != "Quiz" and not require_met(sid, st, r, since, agent)]
     for r in task["require"]:
@@ -1135,12 +1180,18 @@ def on_pretool(inp):
     if tool == "Read":
         if norm(ti.get("file_path", "")) in (proposal_path(sid), notes_path(sid)):
             return None
-    if st["phase"] == "DONE":
-        if tool == "Read":
+    if st["phase"] == "DONE":  # reached only by an owner's END limit (one closing turn)
+        if tool in ("Read", "Grep", "Glob"):
             return None
-        return _deny(sid, st, tool, ti, agent, f"Contract {st['current']} waits for the owner's #ok or #redo. "
-                     "Only reads, to show the owner the results, until then.", count=False)
+        return _deny(sid, st, tool, ti, agent, f"Contract {st['current']} hit the owner's limit and waits for his "
+                     "#ok or #redo. Reads only until then.", count=False)
     if tool in FREE_TOOLS:
+        return None
+    reading = tool in ("Read", "Grep", "Glob") or (
+        tool == "Bash" and READONLY_BASH.match(ti.get("command", "").strip())
+        and not shell_ops(ti.get("command", "")) and not RECON_UNSAFE.search(ti.get("command", "")))
+    if reading and st["phase"] == "ACTIVE" and not (agent and agent in st["agents"]):
+        _allow(sid, st, tool, ti, agent, inp=inp)  # no read is ever blocked in a contract (owner, 2026-11-12 21:03)
         return None
     if tool in WRITE_TOOLS and norm(ti.get(PATH_TOOLS[tool], "")) in (proposal_path(sid), notes_path(sid)):
         return None
@@ -1279,8 +1330,9 @@ def _contract_gate(sid, st, c, inp, tool, ti, label, since, agent):
         _allow(sid, st, tool, ti, agent, inp=inp, label=label, task=i + 1)
         return None
     key = primary(tool, ti)
-    if tool == "Bash" and SHELL_OPS.search(key):
-        why = " (the command holds | ; & < > ` or $( somewhere, even in quotes: write it as a script, or as an exact STEP)"
+    if tool == "Bash" and shell_ops(key):
+        why = (" (the command chains, pipes or redirects outside quotes, or holds `$(` or a backtick: write it as a "
+               "script, or as an exact STEP)")
     else:
         why = ""
     return _gate_deny(sid, st, tool, ti, agent, inp, label, i, f"Outside contract {label}: {tool} {key[:160]}{why}.")
@@ -1609,11 +1661,17 @@ def claim_check(sid, st, msg):
     return miss
 
 
+def _qhash(line):
+    return hashlib.sha256(line.strip().encode()).hexdigest()[:16]
+
+
 def quote_check(sid, st, c, msg, since):
     """For REQUIRE Read FULL+QUOTE: ask for 3 random lines, then check the quote exactly."""
     q = st.get("quote")
     if q:
-        ok = not q.get("tainted") and all(line.strip() and line.strip() in (msg or "") for line in q["lines"])
+        # state.json holds only fingerprints of the quiz lines (no read is blocked, so it must give nothing away)
+        said = {_qhash(x) for x in (msg or "").split("\n") if x.strip()}
+        ok = not q.get("tainted") and all(h in said for h in q.get("hashes", []))
         st["quote"] = None
         if ok:
             st["quote_passed"].append(q["path"])
@@ -1647,7 +1705,7 @@ def quote_check(sid, st, c, msg, since):
             with open(p, encoding="utf-8", errors="replace") as f:
                 lines = [(i + 1, x) for i, x in enumerate(f.read().split("\n")) if len(x.strip()) > 12]
             pick = sorted(RNG.sample(lines, min(RNG.randint(QUIZ_MIN, QUIZ_MAX), len(lines))))
-            st["quote"] = {"path": p, "lines": [x for _, x in pick]}
+            st["quote"] = {"path": p, "nums": [i for i, _ in pick], "hashes": [_qhash(x) for _, x in pick]}
             return (f"quote lines {', '.join(str(i) for i, _ in pick)} of {p} exactly, each on its own line, "
                     "with no tool call")
     for t in c["tasks"]:
@@ -1668,7 +1726,8 @@ def quote_check(sid, st, c, msg, since):
                 continue
             # the hook draws both the count (3 to 8, never more than 8) and the lines
             pick = sorted(RNG.sample(lines, min(RNG.randint(QUIZ_MIN, QUIZ_MAX), len(lines))))
-            st["quote"] = {"path": p, "lines": [x for _, x in pick], "task": t["n"]}
+            st["quote"] = {"path": p, "nums": [i for i, _ in pick], "hashes": [_qhash(x) for _, x in pick],
+                           "task": t["n"]}
             return (f"quiz: quote lines {', '.join(str(i) for i, _ in pick)} of {p} exactly, each on its own line, "
                     "with no tool call")
     return None
@@ -1719,6 +1778,12 @@ def deferrals(msg):
             continue
         out.append(m.group(0))
     return out
+
+
+def _asks_owner(msg):
+    """True when the message ends by asking the owner (a question, or a numbered choice list)."""
+    tail = [x.strip() for x in (msg or "").strip().split("\n") if x.strip()][-4:]
+    return bool(tail) and (tail[-1].endswith("?") or any(re.match(r"^[-*]?\s*\**\s*[1-9][.)]", x) for x in tail))
 
 
 JEV_NAMES = {"claims_unproven": "a claim the tool log does not show",
@@ -1783,14 +1848,20 @@ def _on_stop(inp):
     phase = st["phase"]
     task_n = _task_number(sid, st)
     miss = [] if lifted(st, "claims", task_n) else claim_check(sid, st, msg)
-    if phase in NEGOTIATION and st["current"] == "OPENING" and not lifted(st, "opening"):
+    if (phase in NEGOTIATION and st["current"] == "OPENING" and not lifted(st, "opening")
+            and not st.get("opening_done")):
+        # The opening happens once per session: met once, it never re-opens when another session changes an opening
+        # file or a newer handoff appears (owner, 2026-11-12, session a96eac98).
         c = load_contract(sid, st, "OPENING")
         reqs = [r for t in c["tasks"] + [c["global"]] for r in t["require"]]
+        before = len(miss)
         miss += [f"{r['kind']}: {resolve(r['value'], st['root'])}" for r in reqs if not require_met(sid, st, r, 0)]
         opened = [resolve(r["value"], st["root"]) for r in reqs if r["kind"].startswith("Read")]
         opened = [p for p in opened if os.path.isfile(p)]
         miss += [f"Read FULL: {p} (an opening file points to it)" for p in pointed_docs(sid, st, opened)
                  if not full_read(sid, st, p, 0)]
+        if len(miss) == before:
+            st["opening_done"] = True
     elif phase == "ACTIVE":
         p = contract_file(sid, st["current"])
         if not os.path.exists(p) or sha(p) != st["hash"]:
@@ -1824,7 +1895,9 @@ def _on_stop(inp):
                        "report them to the owner")
         for ph in deferrals(msg):  # A3 3f: nothing skipped, nothing put off
             due.append(f"your message puts work off (\"{ph}\"): do it now, or ask the owner to strike it")
-        if msg.strip() and not lifted(st, "stop", i + 1):  # decision 2: Jev judges, the code decides
+        # decision 2: Jev judges, the code decides. A message that waits on the owner's answer (it ends asking him)
+        # is not work put off: Jev is not asked about it, or its flip-flopping verdict loops the stop (2026-11-12).
+        if msg.strip() and not lifted(st, "stop", i + 1) and not _asks_owner(msg):
             due += _jev_stop(sid, st, msg, since)
         all_met = not due and i == len(c["tasks"]) - 1 and not task_open(sid, st, t, st["current"], since)
         if lifted(st, "stop", i + 1):
@@ -1833,25 +1906,34 @@ def _on_stop(inp):
             due = []
         miss += due
         if not miss and all_met:
-            st["phase"] = "DONE"
-            log(sid, kind="closed", label=st["current"], finished=True)
+            # Only the owner marks anything done (owner, 2026-11-12): the contract stays ACTIVE and the agent keeps
+            # working; this is a note, said once, and nothing is locked.
+            first = not st.get("all_met_told")
+            st["all_met_told"] = True
+            log(sid, kind="all-met", label=st["current"])
             save_state(sid, st)
-            return {"hookSpecificOutput": {"hookEventName": "Stop", "additionalContext":
-                    f"Every line of contract {st['current']} is met. Report each step you did. Do not call it done: only the owner's #ok closes it. No calls until #ok or #redo."}}
+            if first:
+                return {"hookSpecificOutput": {"hookEventName": "Stop", "additionalContext":
+                        f"Every line of contract {st['current']} is met. Report each step to the owner; only his #ok "
+                        "closes the contract. Work he asks for meanwhile goes on under it."}}
+            return None
     warn = st.pop("owner_warn", None)
     if not miss:
         st["last_block"] = None
         save_state(sid, st)
         return {"systemMessage": " ".join(warn)} if warn else None
-    sig = sorted(miss)
-    # The same unmet list is named once. It used to compare the ledger length too, and every tool call adds a ledger
-    # line, so the same block came back after every turn (2026-11-12). Only a changed list blocks again.
+    # The same unmet list is named once. Compared on the contract's own lines only: Jev's verdict and the
+    # per-message checks change with every reply, and comparing them made the stop flip back and forth forever
+    # (2026-11-12). Those per-message items go to the owner's screen instead when the lines are unchanged.
+    per_msg = ("Jev:", "your message puts work off", "call(s) refused")
+    sig = sorted(m for m in miss if not any(m.startswith(p) or p in m for p in per_msg))
     if st.get("last_block") == sig:
         st["stopped_unmet"] = miss
         log(sid, kind="stopped-unmet", missing=miss)
         save_state(sid, st)
-        # nothing changed since the last block: end the turn and report it to the owner
-        return {"systemMessage": " ".join(warn)} if warn else None
+        extra = [m for m in miss if m not in sig]
+        shown = (warn or []) + (["Not blocked again, for the owner to see: " + "; ".join(extra)] if extra else [])
+        return {"systemMessage": " ".join(shown)} if shown else None
     st["last_block"] = sig
     save_state(sid, st)
     shown = miss[:12] + ([f"... and {len(miss) - 12} more (status bar)"] if len(miss) > 12 else [])

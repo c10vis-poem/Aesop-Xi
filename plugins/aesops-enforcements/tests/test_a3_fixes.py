@@ -1,5 +1,6 @@
 """Contract A3 task 1 fixes (2026-11-12). Run: python3 -I tests/test_a3_fixes.py [--root <plugin folder>]
 --root tests another copy of the plugin (the installed one) with these same tests."""
+import json
 import multiprocessing
 import os
 import sys
@@ -140,18 +141,40 @@ class ReadOnlyListing(unittest.TestCase):
             self.assertIsNotNone(self.check(cmd), cmd)
 
 
-class StateNotReadable(unittest.TestCase):
-    """The enforcement state (quiz answers, ledger) is not read, by the Read tool or read-only Bash; the session's
-    notes, work order and signed contract copies are."""
+class StateReadableQuizHidden(unittest.TestCase):
+    """No read is blocked (owner, 2026-11-12 21:03), the enforcement state included; so the quiz keeps only
+    fingerprints of its lines, and reading state.json gives the answers away nowhere. Writes stay refused."""
 
     def test_state(self):
         s = Session()
         d = C.sdir(s.sid)
         for p in (os.path.join(d, "state.json"), os.path.join(d, "ledger.jsonl")):
-            self.assertIsNotNone(C.protection(s.sid, "Read", {"file_path": p}), p)
-            self.assertIsNotNone(C.protection(s.sid, "Bash", {"command": f"grep -n quote {p}"}), p)
-        for p in (C.notes_path(s.sid), C.proposal_path(s.sid), os.path.join(d, "contracts", "OPENING.md")):
             self.assertIsNone(C.protection(s.sid, "Read", {"file_path": p}), p)
+            self.assertIsNone(C.protection(s.sid, "Bash", {"command": f"grep -n quote {p}"}), p)
+            self.assertIsNotNone(C.protection(s.sid, "Write", {"file_path": p}), p)
+
+    def test_quiz_keeps_no_lines(self):
+        with open(os.path.join(PROJ, "docs", "q.md"), "w") as f:
+            f.write("\n".join(f"secret quiz line number {i} of the file" for i in range(1, 11)) + "\n")
+        s = Session()
+        st = C.load_state(s.sid)
+        p = os.path.join(PROJ, "docs", "q.md")
+        text = f"""CONTRACT   type: contract   root: {PROJ}
+TASK 1  read
+  REQUIRE Read FULL+QUOTE: {p}
+TASK 2  next
+  REQUIRE File: {{root}}/out/never.md
+"""
+        s.sign(text)
+        s.read(p)
+        s.stop()  # draws the quiz
+        st = C.load_state(s.sid)
+        self.assertNotIn("secret quiz line", json.dumps(st))
+        nums = st["quote"]["nums"]
+        with open(p) as f:
+            lines = f.read().split("\n")
+        answer = "\n".join(lines[n - 1] for n in nums)
+        self.assertIn("task 2", s.stop(answer))  # the right quote passes the quiz, so task 1 closes
 
 
 def _hammer(sid, n):

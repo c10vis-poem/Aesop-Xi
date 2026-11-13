@@ -141,7 +141,8 @@ class Contract(unittest.TestCase):
         s = Session()
         s.read(os.path.join(ROOT, "AGENTS.md"))
         s.propose(WORK)
-        ctx = s.prompt("#go")["hookSpecificOutput"]["additionalContext"]
+        # the owner names the END line in his #go: only the owner sets an end or a limit (2026-11-12)
+        ctx = s.prompt("#go, end goal as written")["hookSpecificOutput"]["additionalContext"]
         self.assertIn("Contract A signed", ctx)
         return s
 
@@ -152,12 +153,14 @@ class Contract(unittest.TestCase):
         self.assertFalse(os.path.exists(C.proposal_path(s.sid)))
         self.assertTrue(any("-A.md" in f for d, _, fs in os.walk(os.environ["CONTRACT_OWNER_DIR"]) for f in fs))
 
-    def test_bad_work_order_not_signed(self):
+    def test_bad_work_order_signed_with_errors_named(self):
+        # owner, 2026-11-12 21:00: "If I say Go, that means go." A format error is named for the agent to fix.
         s = Session()
         s.propose("TASK 1 x\nSCOPE Read: a\nTASK 2 y\n")
         ctx = s.prompt("#go")["hookSpecificOutput"]["additionalContext"]
-        self.assertIn("did not pass the format check", ctx)
-        self.assertEqual(s.state()["phase"], "NEGOTIATION")
+        self.assertIn("Signed with format errors", ctx)
+        self.assertIn("can never close", ctx)
+        self.assertEqual(s.state()["phase"], "ACTIVE")
 
     def test_step_once_scope_any_order_no_freeze(self):
         s = self.signed()
@@ -165,9 +168,10 @@ class Contract(unittest.TestCase):
         self.assertIn("Outside contract", s.call("Bash", command="echo hello"))
         # a later task's line may be used while task 1 is open (sign-off still waits for task 1)
         self.assertEqual(s.call("Write", file_path=os.path.join(ROOT, "out", "report.md"), content="x"), "allow")
-        self.assertIn("not in TOOLS", s.call("Grep", pattern="x", path=ROOT))
+        # no read is ever blocked in a contract (owner, 2026-11-12 21:03), TOOLS or not
+        self.assertEqual(s.call("Grep", pattern="x", path=ROOT), "allow")
         self.assertIn("Outside contract", s.call("Bash", command="echo again"))
-        self.assertEqual(s.state()["breaches"], 3)
+        self.assertEqual(s.state()["breaches"], 2)
         self.assertEqual(s.state()["phase"], "ACTIVE")  # breaches are recorded, never freeze
         self.assertEqual(s.call("Read", file_path=DOC), "allow")
 
@@ -185,7 +189,11 @@ class Contract(unittest.TestCase):
         os.makedirs(os.path.join(ROOT, "out"), exist_ok=True)
         open(os.path.join(ROOT, "out", "report.md"), "w").close()
         self.assertEqual(s.stop(), "end")
-        self.assertEqual(s.state()["phase"], "DONE")
+        # only the owner marks anything done (2026-11-12): all lines met is a note, the contract stays ACTIVE
+        self.assertEqual(s.state()["phase"], "ACTIVE")
+        self.assertTrue(s.state().get("all_met_told"))
+        s.prompt("#ok")
+        self.assertEqual(s.state()["phase"], "NEGOTIATION")
         os.remove(os.path.join(ROOT, "out", "report.md"))
 
     def test_changed_file_voids_read(self):
@@ -230,11 +238,12 @@ class Contract(unittest.TestCase):
         s = Session()
         s.read(os.path.join(ROOT, "AGENTS.md"))
         s.propose(WORK.replace("END     goal file", "END     limit time: 1m\n  END     goal file"))
-        s.prompt("#go")
+        s.prompt("#go, limit 1m")
         st = s.state()
         st["signed_at"] -= 120
         C.save_state(s.sid, st)
-        self.assertIn("Hard limit", s.call("Read", file_path=DOC))
+        self.assertEqual(s.call("Read", file_path=DOC), "allow")  # reads stay open (owner, 2026-11-12 21:03)
+        self.assertIn("Hard limit", s.call("Bash", command="echo hello"))
         self.assertEqual(s.stop(), "end")
         self.assertEqual(s.state()["phase"], "DONE")
 
