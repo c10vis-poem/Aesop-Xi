@@ -1,6 +1,6 @@
 {
   "name": "aesops-enforcements",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Contract enforcement: no work without a signed contract. One gate, one stop gate, one ledger; STEP, SCOPE, REQUIRE and END lines; provable reads.",
   "author": {
     "name": "The Builder"

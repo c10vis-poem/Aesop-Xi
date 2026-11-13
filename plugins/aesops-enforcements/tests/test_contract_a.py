@@ -9,6 +9,8 @@ TMP = tempfile.mkdtemp(prefix="contract-a-test-")
 os.environ["HOME"] = os.path.join(TMP, "home")
 os.environ["CONTRACT_STATE"] = os.path.join(TMP, "home", ".claude", "state")  # same layout as the device
 os.environ["CONTRACT_OWNER_DIR"] = os.path.join(TMP, "owner")
+for _k in ("TYPESAFE_API_KEY", "CLAUDE_PLUGIN_OPTION_TYPESAFE_API_KEY", "TYPESAFE_BASE_URL"):
+    os.environ.pop(_k, None)  # tests never use the owner's key or the network (2026-11-12)
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 import contract as C  # noqa: E402
 
@@ -333,7 +335,8 @@ class StopGate(unittest.TestCase):
         self.assertEqual(s.call("Write", file_path=os.path.join(ROOT, "out", "report.md"), content="x"), "allow")
         open(os.path.join(ROOT, "out", "report.md"), "w").close()
         out = s.stop()
-        self.assertIn("task 1: REQUIRE Read FULL", out)
+        self.assertEqual(out, "end")  # same unmet list (task 1): not blocked again (owner, 2026-11-12)
+        self.assertIn("task 1: REQUIRE Read FULL", " ".join(s.state().get("stopped_unmet") or []))  # still pinned
         os.remove(os.path.join(ROOT, "out", "report.md"))
 
     def test_refused_calls_are_reported(self):
