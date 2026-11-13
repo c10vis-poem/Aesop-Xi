@@ -49,7 +49,7 @@ checked every turn; the owner gets a view-only copy in `NvAEx-Recaps/contracts/<
 |---|---|
 | `STEP <Tool>: <exact>` | this exact call, once |
 | `SCOPE <Tool>: <boundary>` | calls inside the boundary: a path folder for Read, Write, Edit, Glob, Grep; for Bash a command prefix (the command itself, or the prefix followed by a space: a folder path in a Bash scope never matches a file inside it); `Server: <name>`; `*`. Bash never chained or redirected |
-| `REQUIRE <Kind>: <value>` | must happen before the task closes (`Read FULL`, `Read FULL+QUOTE`, `Read`, `Quiz`, `Skill`, `Agent`, `Tool`, `Server`, `File`, `Check`, `Write-to-task`); `REQUIRE?` only if the file exists; a path may be `newest <glob>`. A `Check` value is a shell command, run from the contract root with a 15 s limit: met when it exits 0. A sentence there never passes |
+| `REQUIRE <Kind>: <value>` | must happen before the task closes (`Read FULL`, `Read FULL+QUOTE`, `Read`, `Quiz`, `Skill`, `Agent`, `Tool`, `Server`, `File`, `Check`, `Write-to-task`); `REQUIRE?` only if the file exists; a path may be `newest <glob>`. A `Check` value is a shell command: met when the agent's own run of that exact command, after its last Write or Edit in this session, passed; with no such run the stop runs it from the contract root with a 40 s limit, met when it exits 0. A sentence there never passes |
 | `END goal/limit` | goals: `docs`, `file`, `check`, `task`; limits: `time`, `tokens`. Only the owner adds END lines |
 | `TOOLS`, `SKILLS`, `AGENT` | allow-lists; `AGENT <type> model: skills: harness:` for spawns |
 

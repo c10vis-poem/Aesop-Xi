@@ -783,6 +783,31 @@ class OpeningRule1(unittest.TestCase):
         self.assertEqual(s.call("Bash", command="gh api repos/o/r/branches/main/protection"), "allow")
 
 
+class SlowCheck(unittest.TestCase):
+    """HOLES-B (2026-11-13): a Check slower than the stop's time limit (the jev-core selftest) always failed. The
+    agent's own run of the exact command, after its last edit, is the answer; an edit after it sends it back."""
+
+    def test_recorded_run_meets_the_check(self):
+        slow = os.path.join(PROJ, "slow.sh")
+        w(slow, "exit 1\n")  # stands for a test the stop cannot finish in time: run by the stop, it fails
+        cmd = f"sh {slow}"
+        s = Session()
+        s.sign(f"""CONTRACT   type: contract   root: {PROJ}
+SCOPE Bash: sh {slow}
+SCOPE Write: {PROJ}/docs
+TASK 1  slow
+  REQUIRE Check: {cmd}
+TASK 2  next
+  REQUIRE File: {{root}}/out/never.md
+""")
+        self.assertIn("REQUIRE Check", s.stop("working on it"))
+        self.assertEqual(s.call("Bash", command=cmd), "allow")
+        post(s, "Bash", {"command": cmd}, {"stdout": "SELFTEST PASS", "stderr": "", "interrupted": False})
+        out = s.stop("task 1: the selftest passed in the run above")
+        self.assertNotIn("REQUIRE Check", out)
+        self.assertIn("task 2", out)
+
+
 class RedoReopens(unittest.TestCase):
     """HOLES-B 2b (a5b45d30 flaw 3): #redo reopens the run as the next numbered run, without a new #go."""
 

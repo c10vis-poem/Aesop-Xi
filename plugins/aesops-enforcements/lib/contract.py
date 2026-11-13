@@ -1114,7 +1114,7 @@ def require_met(sid, st, r, since, agent=None):
     if kind == "File":
         return os.path.exists(norm(val, root))
     if kind == "Check":
-        return _check(st, val, root)
+        return _check(st, val, root, sid)
     if kind == "Write-to-task":
         return progress_ok(norm(val, root))[0]
     return False
@@ -1124,20 +1124,35 @@ CHECKS_LIVE = False  # True only inside the stop gate (2026-11-12)
 _RAN_THIS_STOP = set()  # each Check command runs at most once per stop
 
 
-def _check(st, cmd, root):
+def _check(st, cmd, root, sid=None):
     """A Check command runs only at the stop, where the decision is made. Prompts and tool calls reuse the last
     stop's result: running every Check on every hook call took longer than the 20 s hook limit, the prompt hook was
     killed and the owner's prompt (with any #push in it) was lost."""
     cache = st.setdefault("check_cache", {})
     if CHECKS_LIVE and cmd not in _RAN_THIS_STOP:
         _RAN_THIS_STOP.add(cmd)
-        cache[cmd] = run_check(cmd, root)
+        ran = _ran_since_edit(sid, cmd) if sid else None
+        cache[cmd] = ran if ran is not None else run_check(cmd, root)
     return cache.get(cmd, False)
+
+
+def _ran_since_edit(sid, cmd):
+    """HOLES-B (2026-11-13): a Check slower than the stop's own time limit (a selftest) always failed. When the agent
+    ran the exact Check command in this session after its last Write or Edit, the newest such run's recorded result
+    (PostToolUse ok, PostToolUseFailure not) is the answer. None when there is no such run: the stop runs it."""
+    led = [e for e in ledger(sid) if e.get("agent") is None]
+    last_edit = max((e["t"] for e in led if e.get("kind") == "call" and e.get("tool") in WRITE_TOOLS), default=0)
+    runs = [e for e in led if e.get("kind") == "result" and e.get("tool") == "Bash" and e.get("t", 0) >= last_edit
+            and str(e.get("key", "")).strip() == cmd.strip()[:150].strip()]
+    return bool(runs[-1].get("ok")) if runs else None
+
+
+CHECK_TIMEOUT = 40  # inside the Stop hook's 60 s; a slower Check is run by the agent first (_ran_since_edit)
 
 
 def run_check(cmd, root):
     try:
-        return subprocess.run(cmd, shell=True, cwd=root, capture_output=True, timeout=15).returncode == 0
+        return subprocess.run(cmd, shell=True, cwd=root, capture_output=True, timeout=CHECK_TIMEOUT).returncode == 0
     except (OSError, subprocess.SubprocessError):
         return False
 
