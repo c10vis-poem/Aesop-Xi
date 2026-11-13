@@ -42,7 +42,14 @@ jobs:
 
       - name: Contract enforcement plugin tests
         # The old hooks/tests folder was removed with the old gates (98e89e6); the rules now live in the plugin.
-        run: python3 -I -m unittest discover -s plugins/aesops-enforcements/tests -v
+        # One process per file: lib/contract.py reads HOME and the state path once, at import, and each test file
+        # sets its own temporary HOME first. In one shared process (unittest discover) the first file's HOME sticks.
+        run: |
+          set -e
+          for f in plugins/aesops-enforcements/tests/test_*.py; do
+            echo "== $f"
+            python3 -I "$f"
+          done
 
   secret-scan:
     runs-on: ubuntu-latest
