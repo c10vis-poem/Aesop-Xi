@@ -7,16 +7,21 @@ The owner's rules (2026-11-10/11; contract A changes 2026-11-11; holes closed 20
 - **Owner**: the user, the builder. **Agent**: every worker and sub-agent on any harness.
 - **Session**: one sitting. **Job**: work on a project. **Task**: one numbered unit of a contract.
 
-## 1. Negotiation first
-Every session starts in **NEGOTIATION** (contract negotiation). Until the owner signs a work order with `#go`, the
-agent may: read anything (Read tool), list folders read-only (`ls`, `find` without -delete or -exec, `wc`), load
-the opening's skills, and write two files in the session folder: `notes.md` and the work order `proposal.md`.
-- The opening (`salary/opening.md`, or `<root>/.contract/opening.md`, which only the owner writes) names the
-  reads that must happen before the first stop: AGENTS, MEMORY, RESUME, PENDING, HANDOFF and the newest Recaps
-  handoff, and every document (`.md`, `.txt`) those files point to that exists on this device: each is read in full
-  before the first stop. **Project Recon**: an opening may add SCOPE lines for reads outside the project.
-- Unmet opening reads hold the stop, each named. The opening happens once per session: once met it never re-opens,
-  whatever another session changes.
+## 1. The opening, then negotiation (rule 1, owner, 2026-11-13)
+Every session starts with the opening, then **NEGOTIATION** (contract negotiation). Until the owner signs a work
+order with `#go`, the agent may: read (the Read tool, Grep, Glob, read-only `ls`, `find` without -delete or -exec,
+`wc`, and reads off the phone: web pages, read-only `gh`, Drive and Docs reads), load the opening's skills, and
+write two files in the session folder: `notes.md` and the work order `proposal.md`.
+- The opening (`salary/opening.md`, or `<root>/.contract/opening.md`, which only the owner writes) names the reads,
+  in order: this RULES.md first; then the project's AGENTS, RESUME, MEMORY, PENDING and HANDOFF; then `HANDOFFS.md`
+  and the newest handoff in NvAEx-Recaps; then every document (`.md`, `.txt`) those files point to that exists on
+  this device. Each is read in full. A file that does not exist is not required. **Project Recon**: an opening may
+  add SCOPE lines for reads outside the project.
+- The opening ends only on the agent's confirmation to the owner: a line starting `Opening done:` naming what it
+  read (by path where two files share a name), what it loaded and what it could not find; then its findings and its
+  proposal. Unmet reads and a missing confirmation hold the stop, each named. The opening happens once per session:
+  once met it never re-opens, whatever another session changes.
+- An instruction ("2. Read RULES.md.", "- Read X") is not a claim that a file was read; "I read X" and "Read: X" are.
 
 ## 2. Contracts
 1. The owner gives the order. 2. The agent writes an itemized work order to `proposal.md`. 3. They revise until
@@ -27,7 +32,8 @@ checked every turn; the owner gets a view-only copy in `NvAEx-Recaps/contracts/<
 - **Only the owner marks anything done.** When every line is met the agent is told once; the contract stays ACTIVE
   and nothing is locked until the owner's `#ok` (or `#redo`).
 - **No code is pushed that was not tested in a live session** (owner, 2026-11-12): tests first, then the change run
-  live in a session (a real stop, prompt, tool call), then `#push`.
+  live in a session (a real stop, prompt, tool call), then `#push`. A merge (`gh pr merge`, `--auto` too) is
+  refused until this session holds a test run after its last Write or Edit, and the newest such run passed.
 - Kinds: **contract** (planned work), **freelance** (unplanned work, signed with `#go`), **salary** (pre-signed
   protocols in `salary/`, listed in `salary/ACTIVE`: GitHub).
 - **Fix on the spot**: anything stale, contradicting or broken the agent comes across becomes a freelance work
@@ -43,7 +49,7 @@ checked every turn; the owner gets a view-only copy in `NvAEx-Recaps/contracts/<
 |---|---|
 | `STEP <Tool>: <exact>` | this exact call, once |
 | `SCOPE <Tool>: <boundary>` | calls inside the boundary: a path folder for Read, Write, Edit, Glob, Grep; for Bash a command prefix (the command itself, or the prefix followed by a space: a folder path in a Bash scope never matches a file inside it); `Server: <name>`; `*`. Bash never chained or redirected |
-| `REQUIRE <Kind>: <value>` | must happen before the task closes (`Read FULL`, `Read FULL+QUOTE`, `Read`, `Quiz`, `Skill`, `Agent`, `Tool`, `Server`, `File`, `Check`, `Write-to-task`); `REQUIRE?` only if the file exists; a path may be `newest <glob>`. A `Check` value is a shell command, run from the contract root with a 15 s limit: met when it exits 0. A sentence there never passes |
+| `REQUIRE <Kind>: <value>` | must happen before the task closes (`Read FULL`, `Read FULL+QUOTE`, `Read`, `Quiz`, `Skill`, `Agent`, `Tool`, `Server`, `File`, `Check`, `Write-to-task`); `REQUIRE?` only if the file exists; a path may be `newest <glob>`. A `Check` value is a shell command: met when the agent's own run of that exact command, after its last Write or Edit in this session, passed; with no such run the stop runs it from the contract root with a 40 s limit, met when it exits 0. A sentence there never passes |
 | `END goal/limit` | goals: `docs`, `file`, `check`, `task`; limits: `time`, `tokens`. Only the owner adds END lines |
 | `TOOLS`, `SKILLS`, `AGENT` | allow-lists; `AGENT <type> model: skills: harness:` for spawns |
 
@@ -53,7 +59,9 @@ checked every turn; the owner gets a view-only copy in `NvAEx-Recaps/contracts/<
 - Bash commands that chain, pipe or redirect (`| ; & < >` outside quotes), or hold `$(` or a backtick outside single
   quotes, only run as an exact STEP. Inside quotes these are text (a commit message, a pattern).
 - **No read is ever blocked in a contract** (owner, 2026-11-12 21:03): Read, Grep, Glob and read-only Bash (`ls`,
-  `find` without -delete/-exec, `wc`, `grep`, `cat`, `head`, `tail`, `stat`, `diff`) run under any contract.
+  `find` without -delete/-exec, `wc`, `grep`, `cat`, `head`, `tail`, `stat`, `diff`) run under any contract, and so
+  do reads off the phone: WebFetch, WebSearch, read-only `gh` (`view`, `list`, `diff`, `checks`, `status`, `search`,
+  `gh api` as GET), Drive and Docs reads.
   Secret files stay unprintable.
 - The owner's verbs also count when the phone keyboard turns `#` into `ß` (`ßredo`).
 
@@ -67,7 +75,9 @@ every line is met the contract waits for `#ok` or `#redo`.
   the agent's message and its tool log: a claim the log does not show, a file's content stated as fact with the file
   never read, work skipped or put off. Yes (0.70 or more): the stop is held, naming the check. Unsure (0.30 to
   0.70): the owner is warned on screen. A key is set but Jev gives no answer: the stop is held. No key: the owner is
-  told once that the audit is off. Jev judges; the code decides.
+  told once that the audit is off; the key comes from the environment or, when no launcher exported it, from
+  `nvaex-secret`. Jev judges; the code decides. The tool log holds each call and, under it, a
+  short redacted line of what it returned (failures marked `FAILED`), so a true claim is not judged unproven.
 
 ## 5. Reads are proven
 - A line counts as read when its current text came back from a Read (line hash): an edit voids only the lines it
@@ -90,13 +100,15 @@ closing turn that names everything not done.
 
 ## 7. The owner's verbs
 Counted anywhere in a message the owner types; a negation in the same sentence cancels; pasted content and
-sub-agent hand-backs never count.
+sub-agent hand-backs never count. A paste reaches the hook as plain text, so a verb counts as pasted when the 16
+characters before it, with it, match what the tools or the agent showed (refusals, tool results, the agent's
+text; spaces and line breaks ignored). The owner is told; he types the verb on its own to use it.
 
 | Verb | Does |
 |---|---|
 | `#go` | signs the work order |
 | `#ok` | accepts the run |
-| `#redo` | sends it back; the next signed run is A2, A3 ... |
+| `#redo` | reopens the run at once as the next run (A2, A3 ...): a revised order the agent wrote is signed, else the same lines run again; no new `#go` |
 | `#push` | releases lines held `after: #push` |
 | `#override [turn\|task\|session]` | lifts every working gate (scope, stop, claims, quiz, opening) for work the owner directs; default: this turn |
 | `#mute <gate> [turn\|task\|session]` / `#unmute <gate\|all>` | silences or restores one gate |
@@ -125,4 +137,5 @@ auto-merge on green CI; GitHub deletes the branch on merge.
 
 ## Status bar
 `lib/statusline.py` shows contract, phase, task, unmet lines, breaches, push and overrides, at no token cost.
+The contract-state line goes into the agent's context only when it changes (and again after a compaction).
 Settings: `{"statusLine": {"type": "command", "command": "python3 -I <plugin>/lib/statusline.py"}}`.

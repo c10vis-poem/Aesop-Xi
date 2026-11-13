@@ -17,7 +17,7 @@ def main(event):
         print("fingerprint taken for session", sys.argv[2])
         return 0
     handlers = {"SessionStart": C.on_start, "UserPromptSubmit": C.on_prompt, "PreToolUse": C.on_pretool,
-                "PostToolUse": C.on_posttool, "Stop": C.on_stop, "SubagentStart": C.on_subagent_start,
+                "PostToolUse": C.on_posttool, "PostToolUseFailure": C.on_posttool, "Stop": C.on_stop, "SubagentStart": C.on_subagent_start,
                 "SubagentStop": C.on_subagent_stop}
     try:
         inp = json.load(sys.stdin)

@@ -3,6 +3,7 @@
 import http.server
 import json
 import os
+import re
 import sys
 import tempfile
 import threading
@@ -86,7 +87,11 @@ class Session:
         return C.on_prompt(self.base(prompt=text))["hookSpecificOutput"]["additionalContext"]
 
     def opening(self):
-        for p in (os.path.join(PROJ, "AGENTS.md"), os.path.join(H, "handoff.md"), os.path.join(PROJ, "docs", "pointed.md")):
+        # Rule 1 (2026-11-13): the rules first, and what they point to
+        rules = os.path.join(PLUGIN, "RULES.md")
+        st = C.load_state(self.sid)
+        for p in [rules] + C.pointed_docs(self.sid, st, [rules]) + [
+                os.path.join(PROJ, "AGENTS.md"), os.path.join(H, "handoff.md"), os.path.join(PROJ, "docs", "pointed.md")]:
             self.read(p)
 
     def sign(self, text):
@@ -94,6 +99,9 @@ class Session:
         w(C.proposal_path(self.sid), text)
         return self.prompt("#go")
 
+
+DONE_MSG = ("Opening done: read aesops-enforcements/RULES.md, AGENTS.md, the handoff and docs/pointed.md; loaded "
+            "nothing; not found: none.")
 
 DONE_WORK = f"""CONTRACT   type: contract   root: {PROJ}
 SCOPE Bash: echo
@@ -115,8 +123,8 @@ class OpeningPointedDocs(unittest.TestCase):
         out = s.stop()
         self.assertIn("pointed.md (an opening file points to it)", out)
         self.assertNotIn("missing.md", out)
-        s.read(os.path.join(PROJ, "docs", "pointed.md"))
-        self.assertTrue(s.stop().startswith("end"))
+        s.opening()
+        self.assertTrue(s.stop(DONE_MSG).startswith("end"))
 
 
 class Claims(unittest.TestCase):
@@ -475,7 +483,7 @@ TASK 1  x
     def test_opening_once(self):
         s = Session()
         s.opening()
-        self.assertTrue(s.stop().startswith("end"))
+        self.assertTrue(s.stop(DONE_MSG).startswith("end"))
         newer = os.path.join(HOME, "repos", "NvAEx-Recaps", "handoff", "2026-11-13")
         os.makedirs(newer, exist_ok=True)
         w(os.path.join(newer, "handoff.md"), "a newer handoff from another session\n")
@@ -506,6 +514,328 @@ class PromptShape(unittest.TestCase):
         e = [x for x in C.ledger(s.sid) if x.get("kind") == "prompt-shape"][-1]
         self.assertIn("[Pasted text #1 +3 lines]", e["markers"])
         self.assertNotIn("look at this", json.dumps(e))
+
+
+def post(s, tool, ti, resp=None, error=None):
+    """PostToolUse (or PostToolUseFailure when error is set) for a call already let through by s.call."""
+    d = s.base(tool_name=tool, tool_input=ti)
+    if error is None:
+        d["tool_response"] = resp
+    else:
+        d["error"] = error
+    C.on_posttool(d)
+
+
+SHIP_WORK = f"""CONTRACT   type: contract   root: {PROJ}
+SCOPE Bash: echo
+SCOPE Bash: python3 -I {PROJ}/tests/test_x.py
+SCOPE Write: {PROJ}/docs
+TASK 1  ship
+  REQUIRE File: {{root}}/out/never.md
+"""
+
+
+class JevDigests(unittest.TestCase):
+    """HOLES-B D8: Jev is sent each call's result, not only the call, so a true claim is not judged unproven."""
+
+    def test_result_reaches_jev(self):
+        j = FakeJev("clean")
+        try:
+            s = Session()
+            s.sign(DONE_WORK)
+            cmd = f"python3 -I {PROJ}/tests/test_x.py"
+            self.assertEqual(s.call("Bash", command=cmd), "allow")
+            post(s, "Bash", {"command": cmd}, {"stdout": "Ran 3 tests in 0.1s\n\nOK", "stderr": "",
+                                                "interrupted": False})
+            self.assertEqual(s.call("Bash", command="echo hi"), "allow")
+            post(s, "Bash", {"command": "echo hi"}, error="Exit code 1\nboom")
+            s.stop("Task 1 is done: out/done.md exists; the 3 tests pass.")
+            log = j.body["state"]["tool_log"]
+            self.assertIn("Ran 3 tests in 0.1s OK", log)
+            self.assertIn("FAILED: Exit code 1 boom", log)
+        finally:
+            j.close()
+
+    def test_digest_is_short_and_redacted(self):
+        d = C.result_digest({"stdout": "token=abcdefghijklmnop " + "x" * 5000}, None)
+        self.assertLessEqual(len(d), 260)
+        self.assertNotIn("abcdefghijklmnop", d)
+
+    def test_failure_event_is_wired(self):
+        with open(os.path.join(PLUGIN, "hooks", "hooks.json")) as f:
+            self.assertIn("PostToolUseFailure", json.load(f)["hooks"])
+        with open(os.path.join(PLUGIN, "lib", "hook.py")) as f:
+            self.assertIn('"PostToolUseFailure"', f.read())
+
+
+class PasteNotOwner(unittest.TestCase):
+    """HOLES-B D13: a verb inside text the tools or the agent showed (pasted back) is not the owner's. The real case,
+    2026-11-13 01:12: a pasted refusal ending "the owner signs it with #go." signed contract A4."""
+
+    REFUSAL = ("No signed contract (NEGOTIATION). Allowed: reads, the opening's skills and listing lines, and the work "
+               "order (/x/proposal.md). Write the work order; the owner signs it with #go.")
+
+    def test_pasted_refusal_does_not_sign(self):
+        s = Session()
+        s.opening()
+        w(C.proposal_path(s.sid), DONE_WORK)
+        self.assertNotEqual(s.call("Bash", command="touch /x"), "allow")  # the gate shows the refusal text
+        # the terminal wraps the paste: line breaks and indents land mid-sentence
+        pasted = ("h(https://example.org/docs/c       li)  Error: PreToolUse hook error: No signed\n     contract "
+                  "(NEGOTIATION). Allowed: reads, the opening's\n     skills and listing lines, and the work order "
+                  "(/x/proposal.md).\n        Write the work order; the owner signs it with\n     #go.\nWhat is this?")
+        out = s.prompt(pasted)
+        self.assertNotIn("signed by the owner", out)
+        self.assertEqual(C.load_state(s.sid)["phase"], "NEGOTIATION")
+        self.assertIn("signed by the owner", s.prompt("#go"))
+
+    def test_pasted_agent_text_does_not_push(self):
+        s = Session()
+        s.sign(DONE_WORK)
+        with open(s.tr, "a") as f:
+            f.write(json.dumps({"type": "assistant", "message": {"content": [
+                {"type": "text", "text": "When you are ready, type #push and I send the fixes to GitHub."}]}}) + "\n")
+        s.prompt("he said: When you are ready, type #push and I send")
+        self.assertFalse(C.load_state(s.sid)["push_ok"])
+
+    def test_typed_verbs_still_count(self):
+        self.assertEqual(C.parse_verbs("#go", shown="the owner signs it with #go."), ["go"])
+        self.assertEqual(C.parse_verbs("Yeah, I just need to go aftet i #push", shown="type #push"), ["push"])
+        self.assertEqual(C.parse_verbs("the owner signs it with #go.", shown="the owner signs it with #go."), [])
+
+
+class Notices(unittest.TestCase):
+    """HOLES-B D14: the same contract-state line is not put in the agent's context on every prompt; it stays in the
+    status bar, and comes back to the agent when it changes."""
+
+    def test_state_line_once_until_it_changes(self):
+        s = Session()
+        self.assertIn("Contract state: ACTIVE", s.sign(DONE_WORK))
+        self.assertNotIn("Contract state:", s.prompt("carry on"))
+        self.assertNotIn("Contract state:", s.prompt("carry on"))
+        self.assertIn("push approved", s.prompt("#push"))
+        import statusline
+        self.assertIn("push ok", statusline.render({"session_id": s.sid}))
+
+    def test_after_compaction_it_is_said_again(self):
+        s = Session()
+        s.sign(DONE_WORK)
+        s.prompt("carry on")
+        C.on_start(s.base(source="compact"))
+        self.assertIn("Contract state:", s.prompt("carry on"))
+
+
+class LiveTestRule(unittest.TestCase):
+    """HOLES-B D15: a merge is refused unless this session ran a test after its last change, and the run passed."""
+
+    MERGE = "gh pr merge 5 -R o/r --squash"
+
+    def setUp(self):
+        self.s = Session()
+        self.s.sign(SHIP_WORK)
+        self.s.prompt("#push")
+
+    def test_merge_without_a_run_refused(self):
+        self.assertIn("live run", self.s.call("Bash", command=self.MERGE))
+
+    def test_merge_after_a_passing_run_allowed_and_an_edit_voids_it(self):
+        s = self.s
+        doc = os.path.join(PROJ, "docs", "live.md")
+        self.assertEqual(s.call("Write", file_path=doc, content="x"), "allow")
+        cmd = f"python3 -I {PROJ}/tests/test_x.py"
+        self.assertEqual(s.call("Bash", command=cmd), "allow")
+        post(s, "Bash", {"command": cmd}, error="Exit code 1\nFAILED (failures=1)")
+        self.assertIn("live run", s.call("Bash", command=self.MERGE))
+        self.assertEqual(s.call("Bash", command=cmd), "allow")
+        post(s, "Bash", {"command": cmd}, {"stdout": "Ran 2 tests\n\nOK", "stderr": "", "interrupted": False})
+        self.assertEqual(s.call("Bash", command=self.MERGE), "allow")
+        self.assertEqual(s.call("Write", file_path=doc, content="y"), "allow")
+        self.assertIn("live run", s.call("Bash", command=self.MERGE))
+        self.assertIn("live run", s.call("Bash", command="gh pr merge 5 -R o/r --auto --squash"))
+
+
+class InstructionNotClaim(unittest.TestCase):
+    """HOLES-B 2b (b3e21f66): an instruction to read a file is not a claim that it was read."""
+
+    def setUp(self):
+        self.s = Session()
+        self.st = C.load_state(self.s.sid)
+
+    def miss(self, msg):
+        return [m for m in C.claim_check(self.s.sid, self.st, msg) if "fix.md" in m]
+
+    def test_instructions(self):
+        for msg in ("Requirements:\n2. Read docs/fix.md.\n3. Then read `docs/fix.md` again.",
+                    "- Read docs/fix.md before the stop", "(1) read docs/fix.md; (2) load the skills",
+                    "Rule 1: the opening. First, read docs/fix.md."):
+            self.assertEqual(self.miss(msg), [], msg)
+
+    def test_claims_still_caught(self):
+        for msg in ("I read docs/fix.md and it is fine.", "Read: docs/fix.md, AGENTS.md",
+                    "Done. I went through `docs/fix.md`."):
+            self.assertTrue(self.miss(msg), msg)
+
+
+class JevKeyReaches(unittest.TestCase):
+    """HOLES-B 2b (a5b45d30): the key reaches the audit however the session was started, not only through crane."""
+
+    def test_key_from_the_secret_store(self):
+        j = FakeJev("block")
+        os.environ.pop("TYPESAFE_API_KEY", None)  # FakeJev sets it; this launch has no key in its environment
+        fake = os.path.join(TMP, "nvaex-secret")
+        w(fake, "#!/bin/sh\n[ \"$1 $2\" = \"get TYPESAFE_API_KEY\" ] && echo fake-store-key\n")
+        os.chmod(fake, 0o755)
+        os.environ["NVAEX_SECRET_CMD"] = fake
+        try:
+            s = Session()
+            s.sign(DONE_WORK)
+            out = s.stop("Task 1 is done: out/done.md exists.")
+            self.assertIn("Jev: a claim the tool log does not show", out)
+        finally:
+            os.environ.pop("NVAEX_SECRET_CMD", None)
+            j.close()
+
+    def test_store_missing_is_no_key(self):
+        os.environ["NVAEX_SECRET_CMD"] = os.path.join(TMP, "no-such-command")
+        try:
+            import jev_audit
+            self.assertEqual(jev_audit._key(), "")
+        finally:
+            os.environ.pop("NVAEX_SECRET_CMD", None)
+
+
+class ReconRecheck(unittest.TestCase):
+    """HOLES-B 2b: every false alarm in NovAExopia docs/plugins/contract-a/recon.md (2026-11-11) re-tested against
+    this code. Each recon line maps to the test that covers it; the ones run in a separate process keep their own HOME."""
+
+    RECON = {  # recon.md line: test (file, Class.test)
+        30: ("test_contract_a.py", "Claims.test_bare_name_read_in_another_repo"),  # bare RULES.md, wrong repo
+        32: ("test_contract_a.py", "Servers.test_both_name_forms"),  # Server line never met
+        36: ("test_contract_a.py", "ReadProof.test_edit_voids_only_changed_lines"),  # an edit voids every read
+        37: ("test_contract_a.py", "ReadProof.test_truncated_long_line"),  # long lines never match
+        "37b": ("test_contract_a.py", "Claims.test_questions_are_not_claims"),  # "read `X`" in a question
+        38: ("test_contract_a.py", "ReadProof.test_binary_read"),  # non-text reads record nothing
+        43: ("test_contract_a.py", "Salary.test_git_dash_c_push_is_held"),  # git -C push, gh -R merge
+        45: ("test_contract_a.py", "Protection.test_path_tricks"),  # literal path strings
+        47: ("test_contract_a.py", "SalaryStep.test_contract_dir_is_protected"),  # .contract/opening.md writable
+        48: ("test_contract_a.py", "Fingerprint.test_other_change_warns_once_never_pauses"),  # protected-file freeze
+        20: ("test_contract_a.py", "StopGate.test_lists_current_task_only_and_pins_a_skipped_line"),  # 14,156 items
+        41: ("test_a3_holes.py", "OwnerDecisions.test_quoted_operators_are_text"),  # quoted | refused
+    }
+
+    def test_each_recon_item(self):
+        import subprocess
+        here = os.path.dirname(os.path.abspath(__file__))
+        by_file = {}
+        for line, (f, t) in self.RECON.items():
+            by_file.setdefault(f, []).append(t)
+        for f, tests in by_file.items():
+            args = [sys.executable, "-I", os.path.join(here, f)] + (["--root", PLUGIN] if ROOT_ARG else []) + tests
+            r = subprocess.run(args, capture_output=True, text=True, timeout=300)
+            self.assertEqual(r.returncode, 0, f"{f} {tests}:\n{r.stderr[-2000:]}")
+            self.assertIn(f"Ran {len(tests)} test", r.stderr)
+
+    def test_notes_and_any_file_readable_under_a_contract(self):  # recon.md line 35 (and 27-28: reads denied)
+        s = Session()
+        s.sign(DONE_WORK)
+        w(C.notes_path(s.sid), "notes\n")
+        for p in (C.notes_path(s.sid), os.path.join(OTHER, "RULES.md"), os.path.join(PROJ, "docs", "fix.md")):
+            self.assertEqual(s.call("Read", file_path=p), "allow", p)
+
+
+class OpeningRule1(unittest.TestCase):
+    """HOLES-B 2b: rule 1 as the owner approved it (2026-11-13): the rules first, then the project's files and the
+    handoff, reads off the phone allowed, and the opening ends only on the agent's confirmation."""
+
+    def test_rules_listed_first_and_required(self):
+        s = Session()
+        out = C.on_start(s.base(source="startup"))["hookSpecificOutput"]["additionalContext"]
+        reqs = [r.rstrip(";,.") for r in re.findall(r"Read FULL: (\S+)", out)]
+        self.assertTrue(reqs and reqs[0].endswith("/RULES.md"), reqs[:3])
+        for p in (os.path.join(PROJ, "AGENTS.md"), os.path.join(H, "handoff.md"), os.path.join(PROJ, "docs", "pointed.md")):
+            s.read(p)
+        self.assertIn("RULES.md", s.stop(DONE_MSG))
+
+    def test_ends_only_on_confirmation(self):
+        s = Session()
+        s.opening()
+        self.assertIn("Opening done:", s.stop("All read. Here is my proposal."))
+        self.assertFalse(C.load_state(s.sid).get("opening_done"))
+        out = s.stop(DONE_MSG)
+        self.assertTrue(out.startswith("end"), out)
+        self.assertTrue(C.load_state(s.sid).get("opening_done"))
+
+    def test_missing_handoffs_file_not_required(self):
+        s = Session()
+        s.opening()
+        self.assertNotIn("HANDOFFS.md", s.stop(DONE_MSG))
+
+    def test_reads_off_the_phone(self):
+        s = Session()
+        for tool, ti in (("WebFetch", {"url": "https://example.org", "prompt": "x"}),
+                         ("Bash", {"command": "gh pr view 5 -R o/r"}),
+                         ("Bash", {"command": "gh api repos/o/r/branches/main/protection"}),
+                         ("mcp__claude_ai_Google_Drive__search_files", {"query": "x"})):
+            self.assertEqual(s.call(tool, **ti), "allow", tool)
+        self.assertNotEqual(s.call("Bash", command="gh api -X DELETE repos/o/r"), "allow")
+        self.assertNotEqual(s.call("Bash", command="gh pr view 5 | sh"), "allow")
+        s.sign(DONE_WORK)  # and under a contract: no read is ever blocked
+        self.assertEqual(s.call("Bash", command="gh api repos/o/r/branches/main/protection"), "allow")
+
+
+class SlowCheck(unittest.TestCase):
+    """HOLES-B (2026-11-13): a Check slower than the stop's time limit (the jev-core selftest) always failed. The
+    agent's own run of the exact command, after its last edit, is the answer; an edit after it sends it back."""
+
+    def test_recorded_run_meets_the_check(self):
+        slow = os.path.join(PROJ, "slow.sh")
+        w(slow, "exit 1\n")  # stands for a test the stop cannot finish in time: run by the stop, it fails
+        cmd = f"sh {slow}"
+        s = Session()
+        s.sign(f"""CONTRACT   type: contract   root: {PROJ}
+SCOPE Bash: sh {slow}
+SCOPE Write: {PROJ}/docs
+TASK 1  slow
+  REQUIRE Check: {cmd}
+TASK 2  next
+  REQUIRE File: {{root}}/out/never.md
+""")
+        self.assertIn("REQUIRE Check", s.stop("working on it"))
+        self.assertEqual(s.call("Bash", command=cmd), "allow")
+        post(s, "Bash", {"command": cmd}, {"stdout": "SELFTEST PASS", "stderr": "", "interrupted": False})
+        out = s.stop("task 1: the selftest passed in the run above")
+        self.assertNotIn("REQUIRE Check", out)
+        self.assertIn("task 2", out)
+
+
+class RedoReopens(unittest.TestCase):
+    """HOLES-B 2b (a5b45d30 flaw 3): #redo reopens the run as the next numbered run, without a new #go."""
+
+    def test_same_lines_run_again(self):
+        s = Session()
+        s.sign(DONE_WORK)
+        out = s.prompt("wrong again, #redo")
+        st = C.load_state(s.sid)
+        self.assertEqual((st["phase"], st["current"]), ("ACTIVE", "A2"), out)
+        self.assertIn("reopened", out)
+        self.assertEqual(s.call("Bash", command="echo again"), "allow")
+
+    def test_revised_order_is_signed(self):
+        s = Session()
+        s.sign(DONE_WORK)
+        w(C.proposal_path(s.sid), SHIP_WORK)
+        s.prompt("#redo")
+        st = C.load_state(s.sid)
+        self.assertEqual(st["current"], "A2")
+        with open(C.contract_file(s.sid, "A2")) as f:
+            self.assertIn("SCOPE Write:", f.read())
+
+    def test_redo_and_go_together(self):
+        s = Session()
+        s.sign(DONE_WORK)
+        w(C.proposal_path(s.sid), SHIP_WORK)
+        s.prompt("#redo #go")
+        self.assertEqual(C.load_state(s.sid)["current"], "A2")
 
 
 if __name__ == "__main__":

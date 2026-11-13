@@ -111,7 +111,8 @@ class Opening(unittest.TestCase):
         self.assertEqual(s.call("Bash", command="ls"), "allow")  # read-only listing is part of the opening
         self.assertIn("No signed contract", s.call("Bash", command="rm x"))
         self.assertIn("No signed contract", s.call("Bash", command="find . -delete"))
-        self.assertIn("No signed contract", s.call("Grep", pattern="x", path=ROOT))
+        # Rule 1 (owner, 2026-11-13): reading is allowed in the opening; Grep is a read
+        self.assertEqual(s.call("Grep", pattern="x", path=ROOT), "allow")
         self.assertEqual(s.call("Write", file_path=C.proposal_path(s.sid), content="x"), "allow")
         self.assertIn("Protected", s.call("Write", file_path=os.path.join(ROOT, ".claude", "settings.json"), content="{}"))
         self.assertIn("Protected", s.call("Bash", command="cat ~/.claude/settings.json"))
@@ -120,7 +121,13 @@ class Opening(unittest.TestCase):
         s = Session()
         self.assertIn("AGENTS.md", s.stop())
         s.read(os.path.join(ROOT, "AGENTS.md"))
-        self.assertEqual(s.stop(), "end")
+        # Rule 1 (owner, 2026-11-13): the rules and what they point to, then the agent's confirmation
+        rules = os.path.join(C.PLUGIN_ROOT, "RULES.md")
+        for p in [rules] + C.pointed_docs(s.sid, s.state(), [rules]):
+            s.read(p)
+        self.assertIn("Opening done:", s.stop())
+        self.assertEqual(s.stop(msg="Opening done: read aesops-enforcements/RULES.md and the project's AGENTS.md; "
+                                    "loaded nothing; not found: none."), "end")
 
 
 WORK = f"""CONTRACT   type: contract   project: test   root: {ROOT}
@@ -210,11 +217,11 @@ class Contract(unittest.TestCase):
 
     def test_redo_renames_and_numbers(self):
         s = self.signed()
+        # HOLES-B 2b (a5b45d30 flaw 3, 2026-11-13): #redo reopens the run at once as A2; no new #go is needed.
         s.prompt("this is wrong, #redo it with the new method")
-        s.propose(WORK)
-        s.prompt("#go")
         st = s.state()
         self.assertEqual(st["current"], "A2")
+        self.assertEqual(st["phase"], "ACTIVE")
         d = os.path.join(C.sdir(s.sid), "contracts")
         self.assertTrue(os.path.exists(os.path.join(d, "A1.md")))
         s.prompt("#ok")

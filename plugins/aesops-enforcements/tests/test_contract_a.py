@@ -99,8 +99,11 @@ class Session:
         return C.load_state(self.sid)
 
     def open_all(self):
-        for p in (os.path.join(ROOT, "AGENTS.md"), NEW_H):
-            self.read(p)
+        # Rule 1 (owner, 2026-11-13): the rules first, and what they point to
+        rules = os.path.join(C.PLUGIN_ROOT, "RULES.md")
+        for p in [rules] + C.pointed_docs(self.sid, self.state(), [rules]) + [os.path.join(ROOT, "AGENTS.md"), NEW_H]:
+            if os.path.isfile(p):  # the Fingerprint tests use a temporary plugin folder with no RULES.md
+                self.read(p)
 
 
 WORK = f"""CONTRACT   type: contract   project: test   root: {ROOT}
@@ -133,7 +136,9 @@ class Opening(unittest.TestCase):
         self.assertIn(NEW_H, out)
         self.assertNotIn(OLD_H, out)
         s.open_all()
-        self.assertEqual(s.stop(), "end")
+        self.assertIn("Opening done:", s.stop())  # rule 1: it ends only on the agent's confirmation
+        self.assertEqual(s.stop("Opening done: read aesops-enforcements/RULES.md, AGENTS.md and the newest handoff; "
+                                "loaded nothing; not found: none."), "end")
 
 
 class SalaryStep(unittest.TestCase):
