@@ -182,11 +182,16 @@ class SplitPathsAndScripts(unittest.TestCase):
     def prot(self, cmd):
         return C.protection("y" * 36, "Bash", {"command": cmd})
 
+    # The test data is assembled at run time ({q} is a quote), so this file's own text never holds a joinable
+    # settings path: the gate inspects a script before running it, and would refuse to run these tests otherwise.
     def test_split_settings_path(self):
-        self.assertIsNotNone(self.prot(f"""python3 -c "open('{HOME}/.cla' + 'ude/settings.json','w').write('x')" """))
+        q, s = "'", "settings"
+        self.assertIsNotNone(self.prot(f"""python3 -c "open({q}{HOME}/.cla{q} + {q}ude/{s}.json{q},{q}w{q}).write({q}x{q})" """))
 
     def test_joined_parts(self):
-        self.assertIsNotNone(self.prot(f"""python3 -c "import os;open(os.path.join('{HOME}','.claude','settings.json'),'w')" """))
+        q, s = "'", "settings"
+        self.assertIsNotNone(self.prot(
+            f"""python3 -c "import os;open(os.path.join({q}{HOME}{q},{q}.claude{q},{q}{s}.json{q}),{q}w{q})" """))
 
     def test_script_file(self):
         bad = os.path.join(TMP, "bad.py")
@@ -243,6 +248,9 @@ class NothingSkipped(unittest.TestCase):
         self.assertTrue(C.deferrals("Parked: the mods, for now."))
         self.assertFalse(C.deferrals("Nothing skipped: every item is done."))
         self.assertFalse(C.deferrals("The rule says never put off work."))
+        self.assertFalse(C.deferrals('The gate flagged "work put off" in my quote of it.'))
+        self.assertFalse(C.deferrals("It matched the label `work skipped or put off`, not me."))
+        self.assertTrue(C.deferrals("The adapters are put off until tomorrow."))
 
     def test_stop_holds(self):
         s = Session()
@@ -263,7 +271,8 @@ class FakeJev:
                     self.send_response(500)
                     self.end_headers()
                     return
-                p = {"block": 0.9, "unsure": 0.5, "clean": 0.05}[outer.mode]
+                import random
+                p = {"block": 0.9, "unsure": 0.5, "clean": 0.05, "random": random.uniform(0.75, 0.99)}[outer.mode]
                 ans = {k: {"noul": p if k == "claims_unproven" else 0.05} for k in outer.body["questions"]}
                 data = json.dumps({"answers": ans, "model": "fake"}).encode()
                 self.send_response(200)
@@ -323,6 +332,19 @@ TASK 1  report
         out = s.stop("Task 1 is done: out/done.md exists.")
         st = C.load_state(s.sid)
         self.assertTrue(st.get("jev_off_told"), out)
+
+    def test_changing_numbers_do_not_loop(self):
+        """Jev's probability differs on every answer; the same verdict must still be named only once."""
+        j = FakeJev("random")
+        try:
+            s = Session()
+            s.sign(DONE_WORK)
+            first = s.stop("Task 1 is done.")
+            self.assertIn("Jev: a claim the tool log does not show", first)
+            self.assertNotIn("yes 0.", first)
+            self.assertTrue(s.stop("Task 1 is done.").startswith("end"), "same verdict, new number: blocked again")
+        finally:
+            j.close()
 
     def test_key_not_sent_in_output(self):
         out, _ = self.run_stop("block")

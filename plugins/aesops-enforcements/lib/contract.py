@@ -1711,7 +1711,11 @@ def deferrals(msg):
     out = []
     for m in DEFER.finditer(msg or ""):
         start = (msg or "").rfind("\n", 0, m.start()) + 1
-        if NOT_DEFER.search(msg[start:m.start()]):
+        before = msg[start:m.start()]
+        if NOT_DEFER.search(before):
+            continue
+        # a quoted phrase is a quote (of the gate, a rule, the owner), not the agent putting work off (2026-11-12)
+        if any(before.count(q) % 2 == 1 for q in ('"', "`")) or before.count("“") > before.count("”"):
             continue
         out.append(m.group(0))
     return out
@@ -1749,7 +1753,10 @@ def _jev_stop(sid, st, msg, since):
     if r["warn"]:
         st.setdefault("owner_warn", []).append("Jev is unsure about the agent's last message: "
                                                + ", ".join(JEV_NAMES[k] for k in r["warn"]) + ". Check it.")
-    return [f"Jev: {JEV_NAMES[k]} (yes {r['p'][k]:.2f}). Fix the message or the work" for k in r["block"]]
+    # No probability in the item: the number changes on every answer, so the same verdict looked like a new list
+    # and the stop never let go (2026-11-12). The number is in the ledger (jev-audit entry).
+    log(sid, kind="jev-p", p=r.get("p"))
+    return [f"Jev: {JEV_NAMES[k]}. Fix the message or the work" for k in r["block"]]
 
 
 def block(reason, event="Stop"):
