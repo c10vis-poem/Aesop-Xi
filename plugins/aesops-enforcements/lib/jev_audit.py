@@ -39,12 +39,27 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def _ok(v):
+    v = (v or "").strip()
+    return v if v and "${" not in v and re.fullmatch(r"[\x21-\x7e]+", v) else ""
+
+
 def _key():
     for n in ("TYPESAFE_API_KEY", "CLAUDE_PLUGIN_OPTION_TYPESAFE_API_KEY"):
-        v = os.environ.get(n, "").strip()
-        if v and "${" not in v and re.fullmatch(r"[\x21-\x7e]+", v):
+        v = _ok(os.environ.get(n))
+        if v:
             return v
-    return ""
+    # HOLES-B 2b (a5b45d30, 2026-11-12): only ~/bin/crane exported the key (from nvaex-secret), so a session started
+    # any other way (plain claude, the shims, AGY) ran with the audit off. The hook now asks the secret store itself.
+    cmd = os.environ.get("NVAEX_SECRET_CMD") or os.path.expanduser("~/bin/nvaex-secret")
+    if not os.access(cmd, os.X_OK):
+        return ""
+    import subprocess
+    try:
+        r = subprocess.run([cmd, "get", "TYPESAFE_API_KEY"], capture_output=True, text=True, timeout=8)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return _ok(r.stdout) if r.returncode == 0 else ""
 
 
 def _endpoint():

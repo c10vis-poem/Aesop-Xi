@@ -69,7 +69,7 @@ def sdir(sid):
 def norm(p, root=None):
     if not p:
         return ""
-    p = p.replace("{root}", root or "").replace("<root>", root or "")
+    p = p.replace("{root}", root or "").replace("<root>", root or "").replace("{plugin}", PLUGIN_ROOT)
     p = os.path.expanduser(p)
     if root and not os.path.isabs(p):
         p = os.path.join(root, p)
@@ -633,8 +633,24 @@ def on_prompt(inp):
     if "redo" in verbs and letter and st["phase"] in ("ACTIVE", "DONE", "FROZEN"):
         st["redo"] = letter
         st["phase"] = "NEGOTIATION"
-        notes.append(f"Contract {st['current']} sent back by the owner (#redo). Write the revised work order to "
-                     f"{proposal_path(sid)}; when signed it becomes the next numbered run of {letter}.")
+        if "go" not in verbs:
+            # HOLES-B 2b (a5b45d30 flaw 3): #redo reopens the run at once as the next numbered run, no new
+            # negotiation round: a revised order the agent already wrote is signed, else the same lines run again.
+            same = not os.path.isfile(proposal_path(sid))
+            if same:
+                with open(contract_file(sid, st["current"])) as f:
+                    w = f.read()
+                with open(proposal_path(sid), "w") as f:
+                    f.write(w)
+            old = st["current"]
+            # the same signed lines keep the owner's END lines; a revised order goes through the usual END rule
+            signed = _sign(sid, st, inp.get("prompt", ""), keep_end=same)
+            notes.append(f"Contract {old} sent back by the owner (#redo) and reopened: "
+                         + signed.replace("signed by the owner (#go)", "signed by #redo"))
+            for k in ("all_met_told", "last_block"):
+                st.pop(k, None)
+        else:
+            notes.append(f"Contract {st['current']} sent back by the owner (#redo).")
     if "go" in verbs:
         notes.append(_sign(sid, st, inp.get("prompt", "")))
     if "push" in verbs:
@@ -659,7 +675,7 @@ def on_prompt(inp):
 END_WORDS = re.compile(r"\b(end|limit|deadline|minutes?|hours?|\d+\s*(?:m|min|h))\b", re.I)
 
 
-def _sign(sid, st, prompt=""):
+def _sign(sid, st, prompt="", keep_end=False):
     pp = proposal_path(sid)
     if not os.path.isfile(pp):
         return f"#go received, but there is no work order at {pp} to sign. Nothing was signed."
@@ -667,7 +683,7 @@ def _sign(sid, st, prompt=""):
         text = f.read()
     notes = []
     # Only the owner adds END lines (owner, 2026-11-12): kept only when his #go message names a limit.
-    if re.search(r"(?m)^\s*END\s", text) and not END_WORDS.search(_owner_text(prompt)):
+    if not keep_end and re.search(r"(?m)^\s*END\s", text) and not END_WORDS.search(_owner_text(prompt)):
         text = re.sub(r"(?m)^\s*END\s.*\n?", "", text)
         notes.append("END lines removed: only the owner sets an end or a limit, and his #go named none.")
     c, errs = parse(text, st["root"])
@@ -1278,7 +1294,13 @@ def on_pretool(inp):
     reading = tool in ("Read", "Grep", "Glob") or (
         tool == "Bash" and READONLY_BASH.match(ti.get("command", "").strip())
         and not shell_ops(ti.get("command", "")) and not RECON_UNSAFE.search(ti.get("command", "")))
-    if reading and st["phase"] == "ACTIVE" and not (agent and agent in st["agents"]):
+    if offsite_read(tool, ti) and not (agent and agent in st["agents"]) and st["phase"] in NEGOTIATION | {"ACTIVE"}:
+        # Rule 1 (2026-11-13) and "no read is ever blocked" (2026-11-12 21:03): web pages, GitHub and Drive are read
+        # freely, in the opening, in negotiation and under a contract
+        _allow(sid, st, tool, ti, agent, inp=inp, work=False)
+        return None
+    # no read is blocked under a contract (2026-11-12 21:03), nor in the opening and negotiation (rule 1, 2026-11-13)
+    if reading and st["phase"] in NEGOTIATION | {"ACTIVE"} and not (agent and agent in st["agents"]):
         _allow(sid, st, tool, ti, agent, inp=inp)  # no read is ever blocked in a contract (owner, 2026-11-12 21:03)
         return None
     if tool in WRITE_TOOLS and norm(ti.get(PATH_TOOLS[tool], "")) in (proposal_path(sid), notes_path(sid)):
@@ -1344,6 +1366,28 @@ def on_pretool(inp):
         return _deny(sid, st, tool, ti, agent, f"Hard limit: {hit}. No more calls; write the closing report and "
                      "name everything not done.", count=False)
     return _contract_gate(sid, st, c, inp, tool, ti, st["current"], st["signed_at"], agent)
+
+
+GH_READ = re.compile(r"^gh\s+(?:(?:pr|issue|run|release|repo|workflow)\s+(?:view|list|diff|checks|status)|"
+                     r"search\s+\w+|api)\b")
+GH_API_WRITE = re.compile(r"\s(?:-X|--method)(?:\s+|=)(?!GET\b)|\s(?:-f|-F|--field|--raw-field|--input)(?:\s|=)")
+OFFSITE_TOOLS = re.compile(r"^(?:WebFetch|WebSearch|mcp__claude_ai_Google_Drive__(?:search_files|read_file_content|"
+                           r"get_file_metadata|list_recent_files|download_file_content|list_file_revisions|"
+                           r"get_file_permissions|list_shared_drives|get_shared_drive_metadata)|"
+                           r"mcp__claude_ai_Google_Docs__read_doc)$")
+
+
+def offsite_read(tool, ti):
+    """A read off the phone: a web page or search, a read-only gh command (gh api only as GET), a Drive or Docs
+    read. Chained or redirected gh commands are not reads."""
+    if OFFSITE_TOOLS.match(tool):
+        return True
+    if tool != "Bash":
+        return False
+    cmd = canonical_bash(ti.get("command", "")).strip()
+    if shell_ops(ti.get("command", "")) or not GH_READ.match(cmd):
+        return False
+    return not (cmd.startswith("gh api") and GH_API_WRITE.search(" " + cmd))
 
 
 MERGE_RE = re.compile(r"(?:^|\s)gh\s+pr\s+merge\b")
@@ -1756,6 +1800,22 @@ def _claim_paths(sid, st, name):
     return read or [norm(name, st["root"])]
 
 
+INSTRUCTION_LEAD = re.compile(r"^\s*(?:(?:[-*>]|\d+[.)]|\(\d+\)|\*\*|step\s+\d+:?|then|first,?|next,?|now,?|also|"
+                              r"and|please)\s*)*$", re.I)
+
+
+def _instruction(msg, m):
+    """HOLES-B 2b (b3e21f66): "2. Read RULES.md." or "- Read X" is an instruction, not a claim that X was read. An
+    instruction: the verb opens its sentence or list item (only list marks or 'then', 'first' before it), has no
+    'I', and is not a 'Read:' list (that is a claim)."""
+    if re.match(r"i\s", m.group(0), re.I):
+        return False
+    start = max((x.end() for x in re.finditer(r"[.!?;\n]", msg[:m.start()])), default=0)
+    verb = re.match(r"[\w-]+(?:\s+through)?", m.group(0)).group(0)
+    after = msg[m.start() + len(verb):m.start() + len(verb) + 1]
+    return bool(INSTRUCTION_LEAD.match(msg[start:m.start()])) and after != ":"
+
+
 def claim_check(sid, st, msg):
     """Every path:line cited and every file said to be read must be in the main session's ledger. Questions and
     plans ("should I read `X`?", "I'll read `X`") are not claims."""
@@ -1777,7 +1837,7 @@ def claim_check(sid, st, msg):
             before = msg[start:m.start()]
             end = re.search(r"[.!?\n]", msg[m.end():])
             sentence_end = msg[m.end() + end.start()] if end else ""
-            if NOT_A_CLAIM.search(before + " ") or sentence_end == "?":
+            if NOT_A_CLAIM.search(before + " ") or sentence_end == "?" or _instruction(msg, m):
                 continue
             paths = [p for p in _claim_paths(sid, st, m.group(1)) if os.path.isfile(p)]
             if paths and not any(coverage(sid, st, p, 0)[0] for p in paths):
@@ -1960,6 +2020,9 @@ def _jev_stop(sid, st, msg, since):
     return [f"Jev: {JEV_NAMES[k]}. Fix the message or the work" for k in r["block"]]
 
 
+OPENING_DONE = re.compile(r"(?im)^[\W_]*opening done\s*:")
+
+
 def block(reason, event="Stop"):
     return {"decision": "block", "reason": reason}
 
@@ -1996,6 +2059,11 @@ def _on_stop(inp):
         opened = [p for p in opened if os.path.isfile(p)]
         miss += [f"Read FULL: {p} (an opening file points to it)" for p in pointed_docs(sid, st, opened)
                  if not full_read(sid, st, p, 0)]
+        if len(miss) == before and not OPENING_DONE.search(msg or ""):
+            # Rule 1 (owner, 2026-11-13): the opening ends only on the agent's confirmation to the owner
+            miss.append("the opening ends with your confirmation to the owner: a line starting 'Opening done:' "
+                        "naming what you read (by path where two files share a name), what you loaded and what you "
+                        "could not find; then your findings and proposal")
         if len(miss) == before:
             st["opening_done"] = True
     elif phase == "ACTIVE":
