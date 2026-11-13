@@ -402,6 +402,75 @@ TASK 2  next
         self.assertIn(1, C.load_state(s.sid)["closed"]["A"])
 
 
+class OwnerDecisions(unittest.TestCase):
+    """The owner's decisions of 2026-11-12, one test each."""
+
+    def test_quoted_operators_are_text(self):
+        self.assertFalse(C.shell_ops('git commit -m "a; b | c" -m "Co-Authored-By: X <x@y.z>"'))
+        self.assertFalse(C.shell_ops("grep -n -e 'a|b' file"))
+        for bad in ("ls; rm x", "cat a | sh", "echo x > f", 'echo "$(id)"', "echo `id`", 'echo "open'):
+            self.assertTrue(C.shell_ops(bad), bad)
+
+    def test_sharp_s_counts_as_hash(self):
+        self.assertEqual(C.parse_verbs("ßredo"), ["redo"])
+        self.assertEqual(C.parse_verbs("straße"), [])
+
+    def test_agent_end_lines_dropped_unless_owner_names_a_limit(self):
+        work = f"""CONTRACT   type: contract   root: {PROJ}
+TASK 1  x
+  REQUIRE File: {{root}}/out/done.md
+END limit time: 10m
+"""
+        s = Session()
+        out = s.sign(work)
+        self.assertIn("END lines removed", out)
+        self.assertNotIn("END", open(C.contract_file(s.sid, "A")).read())
+        s2 = Session()
+        s2.opening()
+        w(C.proposal_path(s2.sid), work)
+        self.assertNotIn("END lines removed", s2.prompt("#go with a 10m limit"))
+
+    def test_empty_last_task_named(self):
+        _, errs = C.parse("TASK 1 a\nREQUIRE File: x\nTASK 2 b\n", PROJ)
+        self.assertTrue(any("TASK 2" in e and "can never close" in e for e in errs))
+
+    def test_protected_step_dropped_at_signing(self):
+        s = Session()
+        out = s.sign(f"""CONTRACT   type: contract   root: {PROJ}
+TASK 1  x
+  STEP Bash: touch {HOME}/.claude/state/x
+  REQUIRE File: {{root}}/out/done.md
+""")
+        self.assertIn("can never run", out)
+        st = C.load_state(s.sid)
+        self.assertTrue(st["void_steps"]["A"])
+        self.assertNotIn("STEP Bash", s.stop("done: out/done.md exists."))
+
+    def test_opening_once(self):
+        s = Session()
+        s.opening()
+        self.assertTrue(s.stop().startswith("end"))
+        newer = os.path.join(HOME, "repos", "NvAEx-Recaps", "handoff", "2026-11-13")
+        os.makedirs(newer, exist_ok=True)
+        w(os.path.join(newer, "handoff.md"), "a newer handoff from another session\n")
+        try:
+            self.assertTrue(s.stop().startswith("end"), "the opening re-opened mid-session")
+        finally:
+            os.remove(os.path.join(newer, "handoff.md"))
+            os.rmdir(newer)
+
+    def test_no_auto_done(self):
+        s = Session()
+        s.sign(f"""CONTRACT   type: contract   root: {PROJ}
+SCOPE Bash: echo
+TASK 1  x
+  REQUIRE File: {{root}}/out/done.md
+""")
+        s.stop("out/done.md exists.")
+        self.assertEqual(C.load_state(s.sid)["phase"], "ACTIVE")
+        self.assertEqual(s.call("Bash", command="echo still working"), "allow")
+
+
 class PromptShape(unittest.TestCase):
     """3c: the shape of each prompt is logged (never its text), to tell a paste from typing."""
 

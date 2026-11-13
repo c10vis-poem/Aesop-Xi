@@ -15,13 +15,19 @@ the opening's skills, and write two files in the session folder: `notes.md` and 
   reads that must happen before the first stop: AGENTS, MEMORY, RESUME, PENDING, HANDOFF and the newest Recaps
   handoff, and every document (`.md`, `.txt`) those files point to that exists on this device: each is read in full
   before the first stop. **Project Recon**: an opening may add SCOPE lines for reads outside the project.
-- Unmet opening reads hold the stop, each named.
+- Unmet opening reads hold the stop, each named. The opening happens once per session: once met it never re-opens,
+  whatever another session changes.
 
 ## 2. Contracts
 1. The owner gives the order. 2. The agent writes an itemized work order to `proposal.md`. 3. They revise until
-both agree. 4. The owner signs with `#go`; a work order with format errors is not signed and the errors are
-named. 5. The signed copy is read-only, its sha256 is checked every turn; the owner gets a view-only copy in
-`NvAEx-Recaps/contracts/<date>/`.
+both agree. 4. The owner signs with `#go`: his go always signs (owner, 2026-11-12: "If I say Go, that means go");
+format errors are named for the agent to fix, and a line that cannot match is ignored; a STEP that protection would
+refuse is dropped at signing and named, never left to deadlock. 5. The signed copy is read-only, its sha256 is
+checked every turn; the owner gets a view-only copy in `NvAEx-Recaps/contracts/<date>/`.
+- **Only the owner marks anything done.** When every line is met the agent is told once; the contract stays ACTIVE
+  and nothing is locked until the owner's `#ok` (or `#redo`).
+- **No code is pushed that was not tested in a live session** (owner, 2026-11-12): tests first, then the change run
+  live in a session (a real stop, prompt, tool call), then `#push`.
 - Kinds: **contract** (planned work), **freelance** (unplanned work, signed with `#go`), **salary** (pre-signed
   protocols in `salary/`, listed in `salary/ACTIVE`: GitHub).
 - **Fix on the spot**: anything stale, contradicting or broken the agent comes across becomes a freelance work
@@ -44,8 +50,12 @@ named. 5. The signed copy is read-only, its sha256 is checked every turn; the ow
 - A call that fits any task's lines is allowed at any time. Sign-off goes in order: the first task with an unmet
   line is the current task, so a line put off on purpose stays listed until it is met.
 - `Server:` matches both the tool-name form (`plugin_x_y`) and the hook's `mcp_server.name`.
-- Bash commands with `| ; & < > ` or `$(` anywhere (even in quotes) only run as an exact STEP: put searches in a
-  script.
+- Bash commands that chain, pipe or redirect (`| ; & < >` outside quotes), or hold `$(` or a backtick outside single
+  quotes, only run as an exact STEP. Inside quotes these are text (a commit message, a pattern).
+- **No read is ever blocked in a contract** (owner, 2026-11-12 21:03): Read, Grep, Glob and read-only Bash (`ls`,
+  `find` without -delete/-exec, `wc`, `grep`, `cat`, `head`, `tail`, `stat`, `diff`) run under any contract.
+  Secret files stay unprintable.
+- The owner's verbs also count when the phone keyboard turns `#` into `ß` (`ßredo`).
 
 ## 4. The stop gate (strictest)
 At every turn end it holds the turn on: every unmet line of the current task, goals up to it, false claims, a due
@@ -97,11 +107,9 @@ Overrides never lift protection.
 The agent cannot write the session folder (except `notes.md` and `proposal.md`), contracts, owner copies, the
 plugin itself, `.contract/` folders, or any `.claude` / `.gemini` settings file; cannot print secret files; cannot
 skip or reroute git hooks. Paths are checked after `~`, `$HOME`, `..` and symlinks are resolved, after string pieces
-are joined (`'.cla' + 'ude'`, `os.path.join` parts), and inside a script file a command runs. Read-only `ls`, `find`
-(no -delete/-exec), `wc`, `grep`, `stat`, `diff`, `cmp`, `du`, `file` may look at the plugin and the owner copies,
-with no shell operators. The enforcement state (`~/.claude/state`: ledger, `state.json` with a pending quiz's
-answers) is not read at all, by the Read tool or Bash; the session's `notes.md`, `proposal.md` and signed contract
-copies are. Secret files are not printed by any reader (`cat`, `grep`, `sed`, `awk`, `diff`, `python` ...). Plugins and
+are joined (`'.cla' + 'ude'`, `os.path.join` parts), and inside a script file a command runs. Reads are never
+blocked (section 3): read-only Bash may look anywhere a Read may, the enforcement state included, so the quiz keeps
+only line numbers and fingerprints in `state.json`, never the lines. Secret files are not printed by any reader (`cat`, `grep`, `sed`, `awk`, `diff`, `python` ...). Plugins and
 settings change only by the owner's hand. Protected files are fingerprinted, but a change never pauses the
 session (never lock the owner): a change that matches git's HEAD (commit, merge, pull, by anyone) is accepted and
 logged; any other change is logged and warned once, in the status bar and the next prompt note.
