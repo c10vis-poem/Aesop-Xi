@@ -1,128 +1,307 @@
-# RULES: contract enforcement
+# RULES
 
-The owner's rules (2026-11-10/11; contract A changes 2026-11-11; holes closed 2026-11-12). One gate, one stop gate, one ledger, all in
-`lib/contract.py`. Where this plugin is enabled, these rules win over any other instruction file.
+The owner's rules for every agent on every harness (rewritten from scratch, 2026-11-13). This file lives in the
+`aesops-enforcements` plugin, which also holds the hooks and the stop gates that enforce it. Where this plugin is
+enabled, these rules win over any other instruction file.
 
-## Words
-- **Owner**: the user, the builder. **Agent**: every worker and sub-agent on any harness.
-- **Session**: one sitting. **Job**: work on a project. **Task**: one numbered unit of a contract.
+---
 
-## 1. Negotiation first
-Every session starts in **NEGOTIATION** (contract negotiation). Until the owner signs a work order with `#go`, the
-agent may: read anything (Read tool), list folders read-only (`ls`, `find` without -delete or -exec, `wc`), load
-the opening's skills, and write two files in the session folder: `notes.md` and the work order `proposal.md`.
-- The opening (`salary/opening.md`, or `<root>/.contract/opening.md`, which only the owner writes) names the
-  reads that must happen before the first stop: AGENTS, MEMORY, RESUME, PENDING, HANDOFF and the newest Recaps
-  handoff, and every document (`.md`, `.txt`) those files point to that exists on this device: each is read in full
-  before the first stop. **Project Recon**: an opening may add SCOPE lines for reads outside the project.
-- Unmet opening reads hold the stop, each named. The opening happens once per session: once met it never re-opens,
-  whatever another session changes.
+## Rule 1. The opening
 
-## 2. Contracts
-1. The owner gives the order. 2. The agent writes an itemized work order to `proposal.md`. 3. They revise until
-both agree. 4. The owner signs with `#go`: his go always signs (owner, 2026-11-12: "If I say Go, that means go");
-format errors are named for the agent to fix, and a line that cannot match is ignored; a STEP that protection would
-refuse is dropped at signing and named, never left to deadlock. 5. The signed copy is read-only, its sha256 is
-checked every turn; the owner gets a view-only copy in `NvAEx-Recaps/contracts/<date>/`.
-- **Only the owner marks anything done.** When every line is met the agent is told once; the contract stays ACTIVE
-  and nothing is locked until the owner's `#ok` (or `#redo`).
-- **No code is pushed that was not tested in a live session** (owner, 2026-11-12): tests first, then the change run
-  live in a session (a real stop, prompt, tool call), then `#push`.
-- Kinds: **contract** (planned work), **freelance** (unplanned work, signed with `#go`), **salary** (pre-signed
-  protocols in `salary/`, listed in `salary/ACTIVE`: GitHub).
-- **Fix on the spot**: anything stale, contradicting or broken the agent comes across becomes a freelance work
-  order right away.
-- **Nothing skipped**: a task never closes while anything in it was skipped, put off or left out. Every item is
-  done, or struck by the owner by name. The stop holds on a deferral in the agent's message ("later", "next
-  session", "follow-up", "for now", "parked", "put off", "skipped", "out of scope", "TODO"), and Jev judges whether
-  the message skips or puts off work (section 4). A line must be met by the work itself, never by a file about it.
-- **The owner decides what a contract covers.** Only the owner adds `END` lines (time, token or goal limits).
+Every session starts with the opening. Until the opening is done and the first contract negotiation is finished,
+the agent does only what this rule allows. Nothing else.
 
-## 3. Lines
-| Line | Meaning |
+**1.1 What the agent may do until then**
+- **Read:** any file in the repos and folders attached to this environment, and read-only off it (web pages,
+  `gh` views, Drive and Docs). Not secret files.
+- **Write:** two files only, both in the session folder: `notes.md` and `proposal.md`.
+- **Nothing else:** no other write, no edit, no command that changes anything, no task.
+
+**1.2 What the agent must read, in this order, each in full**
+1. This RULES.md.
+2. The repo's AGENTS.md (the agent's handbook).
+3. The repo's MEMORY.md, RESUME.md, PENDING.md and HANDOFF.md.
+4. Every document those files point to, in the repos and folders attached to this environment.
+
+A file that does not exist is skipped and named as not found.
+
+**1.3 Confirm, then follow**
+- The agent confirms to the owner in one line starting `Opening done:`: what it read, what it could not find.
+- It then follows the directions in what it read.
+
+**1.4 Plug in before any work**
+- Load the task observer.
+- Load the skills that came with the agent's harness.
+- Check that the memory layers answer (a save and a search that come back).
+- Warm up the task prompter, the skill router (Jev) and the orchestration agents.
+- Say what loaded and what did not.
+
+**1.5 Propose**
+- The agent writes its work order to `proposal.md` (rule 2). That starts the contract negotiation.
+- Until the owner signs it, 1.1 still holds.
+
+---
+
+## Rule 2. The contract
+
+**2.1 Where the work lives**
+- **Repos** hold projects.
+- **Projects** are worked on in sessions.
+- **A session** is one sitting with an agent. It holds one or more jobs.
+- **A job** is one piece of work the owner wants done. It is broken into tasks.
+- **A task** is one numbered step of a job.
+
+Tasks make up a job, jobs make up a session, sessions take place inside a project, projects live in repos. The
+contract covers one job.
+
+**2.2 How a negotiation starts.** One of two ways:
+- **The owner's prompt:** he gives an order.
+- **The agent's recommendation:** at the end of the opening, or any time it finds something stale, broken or
+  missing, the agent reports what it found and proposes the work.
+
+**2.3 What the agent may do while negotiating.** The same as the opening (rule 1.1): read, and write `notes.md` and
+`proposal.md`. Nothing else, until the owner signs.
+
+**2.4 The four sections of the contract.** Every task in the job is broken into four sections:
+1. **STEP:** the exact actions the task must take.
+2. **SCOPE:** where the agent may work, and with what.
+3. **REQUIRE:** what must be true before the task can close.
+4. **END:** the goal that finishes the job, and the limits on it.
+
+**2.5 The proposal: how it is written.** The agent writes the proposal to `proposal.md` in this form:
+- **First line:** `CONTRACT <NAME>   type: contract` (or `freelance` or `salary`).
+- **Under it:** the owner's order in his own words, with the time he gave it.
+- **Lines for the whole job:** SCOPE and REQUIRE lines that apply to every task.
+- **Each task:** `TASK <n>: <what it does>`, then its plan (2.6), then its STEP, SCOPE and REQUIRE lines.
+- **END lines:** only the owner adds them.
+
+**2.6 The plan: how, not just what.** Every task says how the agent will do it, not only what it will get done. It
+names:
+- the Jev route for the task: level, model tier and request id,
+- every skill it will load,
+- every MCP server and tool it will call,
+- every plugin and agent it will use,
+- every other tool and command: Read, Edit, Write, each Bash command,
+- the order it will do them in.
+
+A task with no plan is not signed. What the plan names becomes the task's allowed actions (2.7).
+
+**2.7 The four sections, defined**
+
+**STEP: the exact actions.** A STEP is one exact action the task must take: one tool, with its exact input, run
+once. `STEP Bash: git -C ~/repos/X push origin fix/y` means that command, character for character, one time. A STEP
+is for actions that must happen exactly as written: a push, a merge, a delete, a command that chains or redirects.
+The gate lets the exact call through once and records it. A second run, or one character different, is refused. The
+task cannot close while any of its STEPs has not run. A STEP that the protection rules would refuse is struck out
+when the contract is signed and named to the owner, so it can never deadlock the job.
+
+**SCOPE: where and with what.** A SCOPE line sets the boundary the agent may work inside for this task:
+- for Read, Write, Edit, Glob and Grep, a folder (the agent may touch anything inside it);
+- for Bash, a command prefix (the agent may run that command with any arguments);
+- for MCP, a server (`Server: <name>`);
+- for skills and agents, the `SKILLS` and `AGENT` allow-lists.
+
+Anything outside every task's SCOPE is refused, and each refusal is counted as a breach and reported at the stop.
+Reads are never refused. A Bash command that chains, pipes or redirects is never covered by a SCOPE; it must be a
+STEP. SCOPE is built from the plan (2.6): what the plan names is what the scope allows.
+
+**REQUIRE: what must be true before the task closes.** A REQUIRE line names something that has to have happened
+before the task can close:
+- **Read FULL:** a file read in full;
+- **Skill:** a skill loaded;
+- **Tool:** a tool called;
+- **Agent:** a sub-agent run;
+- **Server:** an MCP server used;
+- **File:** a file written;
+- **Check:** a command whose run passes, for example a test;
+- **Write-to-task:** a report written into the task.
+
+`REQUIRE?` means only if the file exists. Tasks close in order: the first task with an unmet REQUIRE is the current
+task, and the stop gate holds the turn on every unmet line, each one named. A REQUIRE is met by the work itself,
+never by a file about the work.
+
+**END: the goal and the limits.** An END line says when the job is finished and what it may not go past:
+- **A goal:** the result that finishes the job: `docs`, `file`, `check` or `task`. A goal can also be a **loop**: the
+  agent keeps working the task until the goal is met.
+- **A limit:** `time` or `tokens`, how far the job may run. When a limit is hit, every action stops except reads,
+  and the agent gets one closing turn to name everything not done.
+
+After a task is over, the agent may still write, but only to the session notes and to edits the owner ordered. Only
+the owner writes END lines. Any END line the agent wrote is removed at signing. Even with every goal met, only the
+owner's `#ok` closes the job.
+
+---
+
+## Rule 3. Salary and freelance work
+
+Every job is one of three kinds. All three follow the same rules: the same negotiation, the same four sections, the
+same plan, the same restrictions and the same enforcement.
+
+**3.1 Contract work.** A job the owner orders, or one the agent recommends and the owner signs (rule 2).
+
+**3.2 Salary work.** Work done the same way over and over: protocols that have been normalized, background tasks,
+automated workflows. Each salary job is signed once, ahead of time, with its scope, plan and working conditions
+already agreed. It runs whenever its trigger comes up, without a new negotiation. Salary jobs are listed in this
+plugin's `salary/` folder. A contract job that keeps repeating becomes a salary job once the owner approves it.
+
+**3.3 Freelance work.** Unplanned work that comes up in the middle of something else, at any time, even during the
+opening.
+- **Bugs first.** If anything keeps the agent from doing what it is supposed to do, that is a bug: a stop or block
+  it shouldn't hit, a file path in front of it that it can't follow. The agent stops all other work at once, reports
+  it to the owner, and opens a freelance negotiation for the fix. Nothing else goes on until the fix is signed or the
+  owner says otherwise.
+- **Same rules.** A freelance job is negotiated, written, planned, scoped and enforced exactly like a contract. It
+  puts the job it interrupted on hold, and that job resumes when the freelance job closes.
+
+---
+
+## Rule 4. Agents
+
+An agent is any worker on any harness: Claude Code, AGY, Hermes, DSH, Gemini CLI, a cloud session, or a sub-agent.
+Every agent follows every rule.
+
+**4.1 Its harness and its environment**
+- **Use the harness.** The agent uses the tools, skills and plugins its harness gives it. That's a requirement, not
+  a suggestion. It loads them, warms them up, and uses them for the work they're built for.
+- **Keep the environment.** It keeps its environment working: settings, servers and plugins answering, nothing
+  broken left behind. Anything it finds broken is a bug (rule 3.3).
+
+**4.2 Memory**
+- **Keep it running.** The agent keeps its memory layer running and recursive: what it learns this session is saved
+  where the next session will find it, and it reads what earlier sessions saved before acting.
+- **Use the orchestration layer.** For finding information it uses dumbass-memory with the continual harness, the
+  reasoning bank and the compaction protocols. AGENTS.md says how; this rule says it must.
+
+**4.3 Housekeeping.** Nothing stale stays: no old observations, no dead files, no leftover branches, no notes that
+no longer match what's true. The agent cleans up as it goes. Anything it deletes is named to the owner first
+(rule 2).
+
+**4.4 GitHub.** Every change goes the same road: sync the fork, branch, commit, secret scan, push, pull request,
+auto-merge when the checks pass, branch deleted. Nothing is left on a branch or a local copy, unless the owner says
+otherwise. Push only after `#push`.
+
+**4.5 Sub-agents**
+- **Planned up front.** Every sub-agent is in the plan of the contract the owner signed: its type, model, skills,
+  harness and job.
+- **Same machinery.** It runs under the same machinery as the main agent: its own tool router, stop guards and task
+  auditor.
+- **Inside the parent's scope.** Its scope follows the same path, and is never wider than the parent task's.
+- **Writes as it goes.** It writes to its task file as it works: its plan, its last action, its findings, and
+  anything blocking it.
+- **Checked hand-back.** Its hand-back is checked against what it actually did before it counts.
+
+**4.6 Workflows and marketplaces.** Our custom agent harnesses' dynamic workflows and the pre-compiled marketplaces
+are used the way their plan says. A workflow or marketplace plugin used in a job is named in that job's plan.
+
+**4.7 The infrastructure built for you**
+
+Everything here was built for the agent, so it never has to search blind. A great deal of time and work went into
+it. Followed properly, it finds what you need faster and more reliably than any search you could improvise. Use it
+first, every time.
+
+- **Files are the infrastructure.** Knowledge lives in files, laid out so an agent can find any of it in a few
+  reads:
+  - **`manifest.jsonl`:** the machine index of every item.
+  - **`MAP.md`:** the router that says where things are.
+  - **`skills.json` and `chunk.jsonl`:** the skill index and the searchable pieces of each document.
+
+  Every skill, tool and plugin sits no more than two folders below those indexes. Start at MAP.md, then the
+  manifest, then read only the file it points to. Never load a whole folder.
+- **Manifests, maps and hooks replace loading everything.** Tools and skills are not loaded on every prompt. The
+  indexes and the hooks bring in what the task needs, and nothing else.
+- **The vault indexes:**
+  - **`Vendor-Registries/`:** each vendor's document beside its raw files and manifest.
+  - **`Assets-Index/`:** a pointer, a manifest and the analyzed docs for each forked repo, plus our own compiled
+    assets.
+  - **`Marketplace-Index/`:** our pre-assembled dynamic workflows, plugins and agent packages.
+- **Reverse-engineered repos become marketplaces.** Forked repos are taken apart and kept as clean documents. Their
+  useful parts are rebuilt as our own plugins, agent packages, tools and workflows, and published in our
+  marketplaces.
+- **Aesop-Xi is the orchestration and enforcement layer.** It holds the rules, the hooks, the stop gates and the
+  protocols every agent runs under.
+- **The dumbass is the memory and verification layer.** dumbass-memory holds what every session learned:
+  observations, frozen decisions, task state, and the episodic and semantic layers. Nothing counts as verified until
+  the dumbass has verified it; whatever made the work does not get to grade it. It is built to be smart so the agent
+  doesn't have to guess.
+- **Recursive training.** What each session learns goes back into memory, the skills and the workflows, so the next
+  session starts smarter.
+
+---
+
+## Rule 5. The owner's commands
+
+Only the owner's commands move the work. A command counts when the owner types it, anywhere in his message. It does
+not count when it's pasted, quoted, or written by an agent or a sub-agent. A "don't" or "never" in the same sentence
+cancels it. `ß` in place of `#` counts.
+
+**5.1 Nothing is done until the owner says so.** No agent, router, stop gate or hook ever decides that a task or a
+job is done, and none ever writes one as completed. When the agent believes a task is finished, it asks the owner for
+review and shows the proof: what it ran and what came back. Only the owner's `#ok` completes it.
+
+**5.2 The commands**
+
+| Command | Does |
 |---|---|
-| `STEP <Tool>: <exact>` | this exact call, once |
-| `SCOPE <Tool>: <boundary>` | calls inside the boundary: a path folder for Read, Write, Edit, Glob, Grep; for Bash a command prefix (the command itself, or the prefix followed by a space: a folder path in a Bash scope never matches a file inside it); `Server: <name>`; `*`. Bash never chained or redirected |
-| `REQUIRE <Kind>: <value>` | must happen before the task closes (`Read FULL`, `Read FULL+QUOTE`, `Read`, `Quiz`, `Skill`, `Agent`, `Tool`, `Server`, `File`, `Check`, `Write-to-task`); `REQUIRE?` only if the file exists; a path may be `newest <glob>`. A `Check` value is a shell command, run from the contract root with a 15 s limit: met when it exits 0. A sentence there never passes |
-| `END goal/limit` | goals: `docs`, `file`, `check`, `task`; limits: `time`, `tokens`. Only the owner adds END lines |
-| `TOOLS`, `SKILLS`, `AGENT` | allow-lists; `AGENT <type> model: skills: harness:` for spawns |
+| `#go` | Signs the work order. Nothing runs before it. |
+| `#ok` | Accepts the work the agent asked him to review. The only thing that completes a task or a job. |
+| `#redo` | Starts over. The work is sent back and nothing runs again until a new `#go`. |
+| `#push` | Allows the push, the pull request and the merge. |
+| `#add` | Adds work to the running contract (5.3). |
+| `#strike <item>` | Removes an item from the contract, by name. |
+| `#override [span]` | Lifts every working gate for work the owner directs. Never the protection rules. |
+| `#mute <gate> [span]` | Silences one gate. |
+| `#unmute <gate \| all>` | Turns a gate back on. |
 
-- A call that fits any task's lines is allowed at any time. Sign-off goes in order: the first task with an unmet
-  line is the current task, so a line put off on purpose stays listed until it is met.
-- `Server:` matches both the tool-name form (`plugin_x_y`) and the hook's `mcp_server.name`.
-- Bash commands that chain, pipe or redirect (`| ; & < >` outside quotes), or hold `$(` or a backtick outside single
-  quotes, only run as an exact STEP. Inside quotes these are text (a commit message, a pattern).
-- **No read is ever blocked in a contract** (owner, 2026-11-12 21:03): Read, Grep, Glob and read-only Bash (`ls`,
-  `find` without -delete/-exec, `wc`, `grep`, `cat`, `head`, `tail`, `stat`, `diff`) run under any contract.
-  Secret files stay unprintable.
-- The owner's verbs also count when the phone keyboard turns `#` into `ß` (`ßredo`).
+**5.3 Adding work mid-contract.** Sometimes the signed plan won't reach the goal, or work nobody foresaw turns up.
+Then the work is added; the contract does not start over.
+- **Who can raise it:** the owner, the agent, Jev, the orchestration layer or a task auditor can say more work or
+  another tool is needed.
+- **Who decides:** only the owner adds it, with `#add`. It can be a task, a step, a scope, a skill, a tool, a plugin
+  or an agent.
+- **What happens:** the added lines join the contract and its plan at once. No stop gate blocks the addition, and
+  nothing already done is undone.
 
-## 4. The stop gate (strictest)
-At every turn end it holds the turn on: every unmet line of the current task, goals up to it, false claims, a due
-quiz, any call refused this turn (to be reported), any deferral in the agent's message, and Jev's verdict. Future
-tasks are not listed; at most 12 items, the rest in the status bar. The same unmet list is named once: it blocks
-again only when the list changes (a tool call alone is not a change); the agent is told at the next prompt. When
-every line is met the contract waits for `#ok` or `#redo`.
-- **Jev audits the stop** (owner decision 2): one request to TypeSafe Jev with one typed question per check, over
-  the agent's message and its tool log: a claim the log does not show, a file's content stated as fact with the file
-  never read, work skipped or put off. Yes (0.70 or more): the stop is held, naming the check. Unsure (0.30 to
-  0.70): the owner is warned on screen. A key is set but Jev gives no answer: the stop is held. No key: the owner is
-  told once that the audit is off. Jev judges; the code decides.
+**5.4 How long an override or a mute lasts.** Every `#override` and `#mute` names its span:
+- `turn`: until the owner's next message (the default),
+- `task`: until the current task closes,
+- `contract`: until the contract closes,
+- `on`: until further notice, which means until `#unmute`.
 
-## 5. Reads are proven
-- A line counts as read when its current text came back from a Read (line hash): an edit voids only the lines it
-  changed. Long lines cut short by the Read tool still count; images and PDFs count by file hash. Reads through
-  Bash never count. A compaction voids earlier reads. A sub-agent's reads count only for its sub-contract.
-- Claims: every `path:line` cited and every file the agent says it read, in backticks or in plain words, must be
-  in the ledger. A bare file name means the project's own file when one exists, else any read file of that name.
-  "Tests pass" (or checks, or the selftest) needs a test run in the ledger. Questions and plans ("should I read
-  `X`?") are not claims; "read-only" is not a read.
-- Quiz: after the reading, the hook draws a file and 3 to 8 random lines (never more than 8); the agent quotes them
-  with no tool call. Opening that file while the quiz is pending fails it, and so does a Grep or Glob over its
-  folder (or with no path), or a command naming the file or its folder. Three wrong answers fail the task: its
-  reads are voided and it is read again in full.
-- A sub-agent's `## Last action` must change between its calls, not only the file's time.
+**5.5 Interjections.** The owner may type a command at any point, even in the middle of a task, and it takes effect
+at once.
 
-## 6. Breaches
-Every refused call under a contract is a breach: counted and shown in the status bar. Breaches never freeze the
-contract; an unmet contract simply does not close. A hard limit (`END limit`) stops all calls and leaves one
-closing turn that names everything not done.
+---
 
-## 7. The owner's verbs
-Counted anywhere in a message the owner types; a negation in the same sentence cancels; pasted content and
-sub-agent hand-backs never count.
+## Rule 6. Wrap-up and upkeep
 
-| Verb | Does |
-|---|---|
-| `#go` | signs the work order |
-| `#ok` | accepts the run |
-| `#redo` | sends it back; the next signed run is A2, A3 ... |
-| `#push` | releases lines held `after: #push` |
-| `#override [turn\|task\|session]` | lifts every working gate (scope, stop, claims, quiz, opening) for work the owner directs; default: this turn |
-| `#mute <gate> [turn\|task\|session]` / `#unmute <gate\|all>` | silences or restores one gate |
+**6.1 The wrap-up.** A session ends with the wrap-up, on the owner's command. It sends everything the session made to
+its home, so the next session starts from files, not from memory:
+- **The session's notes** (scratchpad, task log, skill log) go to `NvAEx-Recaps/session-logs/<date>-<session>/`.
+- **In the repo the work was in:**
+  - lasting facts go to MEMORY.md,
+  - changes to protocols, settings, manifests or output style go to AGENTS.md (rules themselves only in RULES.md),
+  - RESUME.md is rewritten from scratch,
+  - anything not done goes to PENDING.md.
+- **The next session's context** is written as a handoff in `NvAEx-Recaps/handoff/<date>/`, and the repo's
+  HANDOFF.md points to it.
+- **The task observer** logs the session's observations.
+- **Then GitHub (rule 4.4):** every touched repo is committed, scanned, pushed and merged. Nothing is left behind.
 
-Overrides never lift protection.
+**6.2 Contracts are kept.** Every finished contract is saved as a permanent file, with its runs, its plan, its tool
+log and the owner's verdict. They are kept for audits, for deep searches, and for tracing a bug back to the job that
+made it.
 
-## 8. Protection (always on, under every override)
-The agent cannot write the session folder (except `notes.md` and `proposal.md`), contracts, owner copies, the
-plugin itself, `.contract/` folders, or any `.claude` / `.gemini` settings file; cannot print secret files; cannot
-skip or reroute git hooks. Paths are checked after `~`, `$HOME`, `..` and symlinks are resolved, after string pieces
-are joined (`'.cla' + 'ude'`, `os.path.join` parts), and inside a script file a command runs. Reads are never
-blocked (section 3): read-only Bash may look anywhere a Read may, the enforcement state included, so the quiz keeps
-only line numbers and fingerprints in `state.json`, never the lines. Secret files are not printed by any reader (`cat`, `grep`, `sed`, `awk`, `diff`, `python` ...). Plugins and
-settings change only by the owner's hand. Protected files are fingerprinted, but a change never pauses the
-session (never lock the owner): a change that matches git's HEAD (commit, merge, pull, by anyone) is accepted and
-logged; any other change is logged and warned once, in the status bar and the next prompt note.
+**6.3 RLVR: every result is graded and verified.** RLVR means rewards from verifiable results: work counts only when
+a real check proves it.
+- **Graded by a check.** Every task's result is graded by something that can be checked: a test that ran, a
+  command's output, a file read back, never the agent's word. Whatever made the work does not grade it.
+- **Rates kept.** The success rate and the verification rate are kept for every agent and every kind of task.
+- **Scripted and trained.** Verified results, and the scripts that checked them, feed the training: what passed
+  becomes a script or a workflow; what failed becomes a fix.
 
-## 9. Runs and scores
-The first run is `A`; `#ok` accepts it; `#redo` makes the next signed run `A2` (the first renamed `A1`).
-`NvAEx-Recaps/contracts/scores.md` records each letter.
-
-## 10. GitHub (salary)
-`salary/github.md`: forks sync to upstream first; branch; local commits; gitleaks on every commit and push; push,
-PR and merge only after `#push` (also when written as `git -C <dir> push` or `gh -R <repo> pr merge`); PR with
-auto-merge on green CI; GitHub deletes the branch on merge.
-
-## Status bar
-`lib/statusline.py` shows contract, phase, task, unmet lines, breaches, push and overrides, at no token cost.
-Settings: `{"statusLine": {"type": "command", "command": "python3 -I <plugin>/lib/statusline.py"}}`.
+**6.4 Upkeep, every session**
+- **Memory.** Keep every memory layer up to date as you go, not only at the end.
+- **Writing to task.** Write to the task as you work: what was done, what came back, what is next.
+- **Session logs.** Log every session.
+- **Housekeeping.** Clean up as you go: nothing stale, no stragglers.
+- **GitHub.** Everything is pushed and auto-merged, unless the owner says otherwise.
